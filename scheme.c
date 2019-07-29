@@ -98,7 +98,8 @@ object *read(FILE *in) {
     eat_whitespace(in);
     //get next char of input str
     c = getc(in);    
-    printf("%i", c);
+
+
 
     //falls char ziffer oder: (minus vor einer ziffer) 
     if (isdigit(c) || (c == '-' && (isdigit(peek(in))))) {
@@ -112,6 +113,7 @@ object *read(FILE *in) {
             ungetc(c, in);
         }
         //get all remaining digits which belong to number
+        //c is a char in this case!
         while (isdigit(c = getc(in))) {
             //alte nummer mal 10 plus neue zahl. Falls neue Zahl = 0 addiere nichts
             //zb:
