@@ -6,7 +6,7 @@
 /**************************** MODEL ******************************/
 
 //define enum with name "object_type" with only option FIXNUM as choice
-typedef enum {FIXNUM} object_type;
+typedef enum {BOOLEAN, FIXNUM} object_type;
 
 typedef struct object {
     object_type type;
@@ -15,9 +15,12 @@ typedef struct object {
     union {
         //A struct is a type consisting of a sequence of members whose storage is allocated in an ordered sequence
         //struct is named "fixnum"
+         struct {
+            char value;
+        } boolean;
         struct {
             long value;
-        } fixnum;
+        } fixnum;        
     } data;
 } object;
 
@@ -35,7 +38,22 @@ object *alloc_object(void) {
     }
     return obj;
 }
+//*****************boolean//
+object *false;
+object *true;
 
+char is_boolean(object *obj) {
+    return obj->type == BOOLEAN;
+}
+
+char is_false(object *obj) {
+    return obj == false;
+}
+
+char is_true(object *obj) {
+    return !is_false(obj);
+}
+///**fixnum
 object *make_fixnum(long value) {
     object *obj;
 
@@ -48,8 +66,16 @@ object *make_fixnum(long value) {
 char is_fixnum(object *obj) {
     return obj->type == FIXNUM;
 }
+//init true and false which reader returns as singleton
+void init(void) {
+    false = alloc_object();
+    false->type = BOOLEAN;
+    false->data.boolean.value = 0;
 
-
+    true = alloc_object();
+    true->type = BOOLEAN;
+    true->data.boolean.value = 1;
+}
 /***************************** READ ******************************/
 
 //check if seperator
@@ -98,8 +124,19 @@ object *read(FILE *in) {
     eat_whitespace(in);
     //get next char of input str
     c = getc(in);    
-
-
+    //read boolean
+    if (c == '#') { 
+        c = getc(in);
+        switch (c) {
+            case 't':
+                return true;
+            case 'f':
+                return false;
+            default:
+                fprintf(stderr, "unknown boolean literal\n");
+                exit(1);
+        }
+    }
 
     //falls char ziffer oder: (minus vor einer ziffer) 
     if (isdigit(c) || (c == '-' && (isdigit(peek(in))))) {
@@ -154,7 +191,12 @@ object *eval(object *exp) {
 
 void write(object *obj) {
     switch (obj->type) {
+        case BOOLEAN:
+            //einzelnes zeichen
+            printf("#%c", is_false(obj) ? 'f' : 't');
+            break;
         case FIXNUM:
+            //long signed
             printf("%ld", obj->data.fixnum.value);
             break;
         default:
@@ -170,6 +212,8 @@ int main(void) {
     printf("Welcome to Bootstrap Scheme. "
            "Use ctrl-c to exit.\n");
 
+    init();
+    
     while (1) {
         printf("> ");
         write(eval(read(stdin)));
