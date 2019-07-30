@@ -6,8 +6,8 @@
 /**************************** MODEL ******************************/
 
 //define enum with name "object_type" with only option FIXNUM as choice
-typedef enum {BOOLEAN, FIXNUM} object_type;
-
+typedef enum {BOOLEAN, FIXNUM, CHARACTER, STRING} object_type;
+    
 typedef struct object {
     object_type type;
     //A union is a type consisting of a sequence of members whose storage overlaps
@@ -20,7 +20,13 @@ typedef struct object {
         } boolean;
         struct {
             long value;
-        } fixnum;        
+        } fixnum;
+                struct {
+            char value;
+        } character;
+        struct {
+            char *value;
+        } string;      
     } data;
 } object;
 
@@ -66,6 +72,38 @@ object *make_fixnum(long value) {
 char is_fixnum(object *obj) {
     return obj->type == FIXNUM;
 }
+
+object *make_character(char value) {
+    object *obj;
+
+    obj = alloc_object();
+    obj->type = CHARACTER;
+    obj->data.character.value = value;
+    return obj;
+}
+
+object *make_string(char *value) {
+    object *obj;
+
+    obj = alloc_object();
+    obj->type = STRING;
+    obj->data.string.value = malloc(strlen(value) + 1);
+    if (obj->data.string.value == NULL) {
+        fprintf(stderr, "out of memory\n");
+        exit(1);
+    }
+    strcpy(obj->data.string.value, value);
+    return obj;
+}
+
+char is_string(object *obj) {
+    return obj->type == STRING;
+}
+
+char is_character(object *obj) {
+    return obj->type == CHARACTER;
+}
+
 //init true and false which reader returns as singleton
 void init(void) {
     false = alloc_object();
@@ -113,18 +151,68 @@ void eat_whitespace(FILE *in) {
     }
 }
 
+void eat_expected_string(FILE *in, char *str) {
+    int c;
 
+    while (*str != '\0') {
+        c = getc(in);
+        if (c != *str) {
+            fprintf(stderr, "unexpected character '%c'\n", c);
+            exit(1);
+        }
+        str++;
+    }
+}
+
+void peek_expected_delimiter(FILE *in) {
+    if (!is_delimiter(peek(in))) {
+        fprintf(stderr, "character not followed by delimiter\n");
+        exit(1);
+    }
+}
+
+object *read_character(FILE *in) {
+    int c;
+
+    c = getc(in);
+    switch (c) {
+        case EOF:
+            fprintf(stderr, "incomplete character literal\n");
+            exit(1);
+        case 's':
+            if (peek(in) == 'p') {
+                eat_expected_string(in, "pace");
+                peek_expected_delimiter(in);
+                return make_character(' ');
+            }
+            break;
+        case 'n':
+            if (peek(in) == 'e') {
+                eat_expected_string(in, "ewline");
+                peek_expected_delimiter(in);
+                return make_character('\n');
+            }
+            break;
+    }
+    peek_expected_delimiter(in);
+    return make_character(c);
+}
 
 object *read(FILE *in) {
 
     int c;
     short sign = 1;
     long num = 0;
+    //for strings
+    int i;
+#define BUFFER_MAX 1000
+    char buffer[BUFFER_MAX];
+
     //kill whitespaces
     eat_whitespace(in);
     //get next char of input str
     c = getc(in);    
-    //read boolean
+    //read boolean or char
     if (c == '#') { 
         c = getc(in);
         switch (c) {
@@ -132,14 +220,16 @@ object *read(FILE *in) {
                 return true;
             case 'f':
                 return false;
+            case '\\':
+                return read_character(in);
             default:
-                fprintf(stderr, "unknown boolean literal\n");
+                fprintf(stderr, "unknown boolean or character literal\n");
                 exit(1);
         }
     }
 
     //falls char ziffer oder: (minus vor einer ziffer) 
-    if (isdigit(c) || (c == '-' && (isdigit(peek(in))))) {
+    else if (isdigit(c) || (c == '-' && (isdigit(peek(in))))) {
         /* read a fixnum */
         //falls char ein minus ist setze sign=-1
         if (c == '-') {
@@ -172,6 +262,33 @@ object *read(FILE *in) {
             exit(1);
         }
     }
+    else if (c == '"') { /* read a string */
+        i = 0;
+        while ((c = getc(in)) != '"') {
+            if (c == '\\') {
+                c = getc(in);
+                if (c == 'n') {
+                    c = '\n';
+                }
+            }
+            if (c == EOF) {
+                fprintf(stderr, "non-terminated string literal\n");
+                exit(1);
+            }
+            /* subtract 1 to save space for '\0' terminator */
+            if (i < BUFFER_MAX - 1) {
+                buffer[i++] = c;
+            }
+            else {
+                fprintf(stderr, 
+                        "string too long. Maximum length is %d\n",
+                        BUFFER_MAX);
+                exit(1);
+            }
+        }
+        buffer[i] = '\0';
+        return make_string(buffer);
+    }
     else {
         fprintf(stderr, "bad input. Unexpected '%c'\n", c);
         exit(1);
@@ -190,6 +307,9 @@ object *eval(object *exp) {
 /**************************** PRINT ******************************/
 
 void write(object *obj) {
+    char c;
+    char *str;
+
     switch (obj->type) {
         case BOOLEAN:
             //einzelnes zeichen
@@ -198,6 +318,41 @@ void write(object *obj) {
         case FIXNUM:
             //long signed
             printf("%ld", obj->data.fixnum.value);
+            break;
+        case CHARACTER:
+            c = obj->data.character.value;
+            printf("#\\");
+            switch (c) {
+                case '\n':
+                    printf("newline");
+                    break;
+                case ' ':
+                    printf("space");
+                    break;
+                default:
+                    putchar(c);
+            }
+            break;
+        case STRING:
+            str = obj->data.string.value;
+            putchar('"');
+            while (*str != '\0') {
+                switch (*str) {
+                    case '\n':
+                        printf("\\n");
+                        break;
+                    case '\\':
+                        printf("\\\\");
+                        break;
+                    case '"':
+                        printf("\\\"");
+                        break;
+                    default:
+                        putchar(*str);
+                }
+                str++;
+            }
+            putchar('"');
             break;
         default:
             fprintf(stderr, "cannot write unknown type\n");
