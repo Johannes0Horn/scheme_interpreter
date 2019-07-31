@@ -6,7 +6,7 @@
 /**************************** MODEL ******************************/
 
 //define enum with name "object_type" with only option FIXNUM as choice
-typedef enum {BOOLEAN, FIXNUM, CHARACTER, STRING} object_type;
+typedef enum {THE_EMPTY_LIST, BOOLEAN, FIXNUM, CHARACTER, STRING, PAIR} object_type;
     
 typedef struct object {
     object_type type;
@@ -26,7 +26,11 @@ typedef struct object {
         } character;
         struct {
             char *value;
-        } string;      
+        } string;
+        struct {
+            struct object *car;
+            struct object *cdr;
+        } pair;     
     } data;
 } object;
 
@@ -44,9 +48,15 @@ object *alloc_object(void) {
     }
     return obj;
 }
+
+object *the_empty_list;
 //*****************boolean//
 object *false;
 object *true;
+
+char is_the_empty_list(object *obj) {
+    return obj == the_empty_list;
+}
 
 char is_boolean(object *obj) {
     return obj->type == BOOLEAN;
@@ -104,8 +114,70 @@ char is_character(object *obj) {
     return obj->type == CHARACTER;
 }
 
+//PAIR
+object *cons(object *car, object *cdr) {
+    object *obj;
+    
+    obj = alloc_object();
+    obj->type = PAIR;
+    obj->data.pair.car = car;
+    obj->data.pair.cdr = cdr;
+    return obj;
+}
+
+char is_pair(object *obj) {
+    return obj->type == PAIR;
+}
+
+object *car(object *pair) {
+    return pair->data.pair.car;
+}
+
+void set_car(object *obj, object* value) {
+    obj->data.pair.car = value;
+}
+
+object *cdr(object *pair) {
+    return pair->data.pair.cdr;
+}
+
+void set_cdr(object *obj, object* value) {
+    obj->data.pair.cdr = value;
+}
+
+#define caar(obj)   car(car(obj))
+#define cadr(obj)   car(cdr(obj))
+#define cdar(obj)   cdr(car(obj))
+#define cddr(obj)   cdr(cdr(obj))
+#define caaar(obj)  car(car(car(obj)))
+#define caadr(obj)  car(car(cdr(obj)))
+#define cadar(obj)  car(cdr(car(obj)))
+#define caddr(obj)  car(cdr(cdr(obj)))
+#define cdaar(obj)  cdr(car(car(obj)))
+#define cdadr(obj)  cdr(car(cdr(obj)))
+#define cddar(obj)  cdr(cdr(car(obj)))
+#define cdddr(obj)  cdr(cdr(cdr(obj)))
+#define caaaar(obj) car(car(car(car(obj))))
+#define caaadr(obj) car(car(car(cdr(obj))))
+#define caadar(obj) car(car(cdr(car(obj))))
+#define caaddr(obj) car(car(cdr(cdr(obj))))
+#define cadaar(obj) car(cdr(car(car(obj))))
+#define cadadr(obj) car(cdr(car(cdr(obj))))
+#define caddar(obj) car(cdr(cdr(car(obj))))
+#define cadddr(obj) car(cdr(cdr(cdr(obj))))
+#define cdaaar(obj) cdr(car(car(car(obj))))
+#define cdaadr(obj) cdr(car(car(cdr(obj))))
+#define cdadar(obj) cdr(car(cdr(car(obj))))
+#define cdaddr(obj) cdr(car(cdr(cdr(obj))))
+#define cddaar(obj) cdr(cdr(car(car(obj))))
+#define cddadr(obj) cdr(cdr(car(cdr(obj))))
+#define cdddar(obj) cdr(cdr(cdr(car(obj))))
+#define cddddr(obj) cdr(cdr(cdr(cdr(obj))))
 //init true and false which reader returns as singleton
 void init(void) {
+    the_empty_list = alloc_object();
+    the_empty_list->type = THE_EMPTY_LIST;
+
     false = alloc_object();
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
@@ -198,6 +270,48 @@ object *read_character(FILE *in) {
     return make_character(c);
 }
 
+object *read(FILE *in);
+
+object *read_pair(FILE *in) {
+    int c;
+    object *car_obj;
+    object *cdr_obj;
+    
+    eat_whitespace(in);
+    
+    c = getc(in);
+    if (c == ')') { /* read the empty list */
+        return the_empty_list;
+    }
+    ungetc(c, in);
+
+    car_obj = read(in);
+
+    eat_whitespace(in);
+    
+    c = getc(in);    
+    if (c == '.') { /* read improper list */
+        c = peek(in);
+        if (!is_delimiter(c)) {
+            fprintf(stderr, "dot not followed by delimiter\n");
+            exit(1);
+        }
+        cdr_obj = read(in);
+        eat_whitespace(in);
+        c = getc(in);
+        if (c != ')') {
+            fprintf(stderr,
+                    "where was the trailing right paren?\n");
+            exit(1);
+        }
+        return cons(car_obj, cdr_obj);
+    }
+    else { /* read list */
+        ungetc(c, in);
+        cdr_obj = read_pair(in);        
+        return cons(car_obj, cdr_obj);
+    }
+}
 object *read(FILE *in) {
 
     int c;
@@ -289,6 +403,9 @@ object *read(FILE *in) {
         buffer[i] = '\0';
         return make_string(buffer);
     }
+    else if (c == '(') { /* read the empty list or pair */
+        return read_pair(in);
+    }
     else {
         fprintf(stderr, "bad input. Unexpected '%c'\n", c);
         exit(1);
@@ -305,12 +422,36 @@ object *eval(object *exp) {
 }
 
 /**************************** PRINT ******************************/
+void write(object *obj);
+
+void write_pair(object *pair) {
+    object *car_obj;
+    object *cdr_obj;
+    
+    car_obj = car(pair);
+    cdr_obj = cdr(pair);
+    write(car_obj);
+    if (cdr_obj->type == PAIR) {
+        printf(" ");
+        write_pair(cdr_obj);
+    }
+    else if (cdr_obj->type == THE_EMPTY_LIST) {
+        return;
+    }
+    else {
+        printf(" . ");
+        write(cdr_obj);
+    }
+}
 
 void write(object *obj) {
     char c;
     char *str;
 
     switch (obj->type) {
+        case THE_EMPTY_LIST:
+            printf("()");
+            break;
         case BOOLEAN:
             //einzelnes zeichen
             printf("#%c", is_false(obj) ? 'f' : 't');
@@ -354,6 +495,11 @@ void write(object *obj) {
                 str++;
             }
             putchar('"');
+            break;
+        case PAIR:
+            printf("(");
+            write_pair(obj);
+            printf(")");
             break;
         default:
             fprintf(stderr, "cannot write unknown type\n");
