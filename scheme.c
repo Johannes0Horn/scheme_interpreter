@@ -338,6 +338,7 @@ void write(object *obj) {
             putchar('"');
             while (*str != '\0') {
                 switch (*str) {
+                    //esacpe c escape chars
                     case '\n':
                         printf("\\n");
                         break;
@@ -366,6 +367,7 @@ int main(void) {
 
     printf("Welcome to Bootstrap Scheme. "
            "Use ctrl-c to exit.\n");
+    printf("test:\\n \\\" \n");
 
     init();
     
