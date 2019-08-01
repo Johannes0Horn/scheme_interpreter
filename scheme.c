@@ -6,7 +6,7 @@
 /**************************** MODEL ******************************/
 
 //define enum with name "object_type" with only option FIXNUM as choice
-typedef enum {THE_EMPTY_LIST, BOOLEAN, FIXNUM, CHARACTER, STRING, PAIR} object_type;
+typedef enum {THE_EMPTY_LIST, BOOLEAN, SYMBOL, FIXNUM, CHARACTER, STRING, PAIR} object_type;
     
 typedef struct object {
     object_type type;
@@ -18,6 +18,9 @@ typedef struct object {
          struct {
             char value;
         } boolean;
+        struct {
+            char *value;
+        } symbol;
         struct {
             long value;
         } fixnum;
@@ -53,6 +56,13 @@ object *the_empty_list;
 //*****************boolean//
 object *false;
 object *true;
+//symbol
+object *symbol_table;
+
+object *cons(object *car, object *cdr);
+object *car(object *pair);
+object *cdr(object *pair);
+
 
 char is_the_empty_list(object *obj) {
     return obj == the_empty_list;
@@ -68,6 +78,36 @@ char is_false(object *obj) {
 
 char is_true(object *obj) {
     return !is_false(obj);
+}
+//symbol
+object *make_symbol(char *value) {
+    object *obj;
+    object *element;
+    
+    /* search for they symbol in the symbol table */
+    element = symbol_table;
+    while (!is_the_empty_list(element)) {
+        if (strcmp(car(element)->data.symbol.value, value) == 0) {
+            return car(element);
+        }
+        element = cdr(element);
+    };
+    
+    /* create the symbol and add it to the symbol table */
+    obj = alloc_object();
+    obj->type = SYMBOL;
+    obj->data.symbol.value = malloc(strlen(value) + 1);
+    if (obj->data.symbol.value == NULL) {
+        fprintf(stderr, "out of memory\n");
+        exit(1);
+    }
+    strcpy(obj->data.symbol.value, value);
+    symbol_table = cons(obj, symbol_table);
+    return obj;
+}
+
+char is_symbol(object *obj) {
+    return obj->type == SYMBOL;
 }
 ///**fixnum
 object *make_fixnum(long value) {
@@ -195,6 +235,10 @@ char is_delimiter(int c) {
            c == '"'   || c == ';';
 }
 
+char is_initial(int c) {
+    return isalpha(c) || c == '*' || c == '/' || c == '>' ||
+             c == '<' || c == '=' || c == '?' || c == '!';
+}
 
 int peek(FILE *in) {
     int c;
@@ -376,6 +420,34 @@ object *read(FILE *in) {
             exit(1);
         }
     }
+    else if (is_initial(c) ||
+             ((c == '+' || c == '-') &&
+              is_delimiter(peek(in)))) { /* read a symbol */
+        i = 0;
+        while (is_initial(c) || isdigit(c) ||
+               c == '+' || c == '-') {
+            /* subtract 1 to save space for '\0' terminator */
+            if (i < BUFFER_MAX - 1) {
+                buffer[i++] = c;
+            }
+            else {
+                fprintf(stderr, "symbol too long. "
+                        "Maximum length is %d\n", BUFFER_MAX);
+                exit(1);
+            }
+            c = getc(in);
+        }
+        if (is_delimiter(c)) {
+            buffer[i] = '\0';
+            ungetc(c, in);
+            return make_symbol(buffer);
+        }
+        else {
+            fprintf(stderr, "symbol not followed by delimiter. "
+                            "Found '%c'\n", c);
+            exit(1);
+        }
+    }
     else if (c == '"') { /* read a string */
         i = 0;
         while ((c = getc(in)) != '"') {
@@ -513,7 +585,7 @@ int main(void) {
 
     printf("Welcome to Bootstrap Scheme. "
            "Use ctrl-c to exit.\n");
-    printf("test:\\n \\\" \n");
+    //printf("test:\\n \\\" \n");
 
     init();
     
