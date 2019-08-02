@@ -82,6 +82,9 @@ object *the_global_environment;
 object *if_symbol;
 //lambda
 object *lambda_symbol;
+//begin
+object *begin_symbol;
+
 
 
 
@@ -610,6 +613,8 @@ void init(void) {
     if_symbol = make_symbol("if");
     //lambda
     lambda_symbol = make_symbol("lambda");
+    //begin
+    begin_symbol = make_symbol("begin");
 
     
     the_empty_environment = the_empty_list;
@@ -1021,6 +1026,18 @@ object *lambda_parameters(object *exp) {
 object *lambda_body(object *exp) {
     return cddr(exp);
 }
+//begin
+object *make_begin(object *exp) {
+    return cons(begin_symbol, exp);
+}
+
+char is_begin(object *exp) {
+    return is_tagged_list(exp, begin_symbol);
+}
+
+object *begin_actions(object *exp) {
+    return cdr(exp);
+}
 
 char is_last_exp(object *seq) {
     return is_the_empty_list(cdr(seq));
@@ -1117,6 +1134,15 @@ tailcall:
                                   lambda_body(exp),
                                   env);
     }
+    else if (is_begin(exp)) {
+        exp = begin_actions(exp);
+        while (!is_last_exp(exp)) {
+            eval(first_exp(exp), env);
+            exp = rest_exps(exp);
+        }
+        exp = first_exp(exp);
+        goto tailcall;
+    }
     else if (is_application(exp)) {
         procedure = eval(operator(exp), env);
         arguments = list_of_values(operands(exp), env);
@@ -1128,12 +1154,7 @@ tailcall:
                        procedure->data.compound_proc.parameters,
                        arguments,
                        procedure->data.compound_proc.env);
-            exp = procedure->data.compound_proc.body;
-            while (!is_last_exp(exp)) {
-                eval(first_exp(exp), env);
-                exp = rest_exps(exp);
-            }
-            exp = first_exp(exp);
+            exp = make_begin(procedure->data.compound_proc.body);
             goto tailcall;
         }
         else {
