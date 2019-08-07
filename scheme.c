@@ -538,6 +538,23 @@ object *load_proc(object *arguments) {
     return result;
 }
 
+object *load_proc_from_str(char *filename) {
+    FILE *in;
+    object *exp;
+    object *result;
+    
+    in = fopen(filename, "r");
+    if (in == NULL) {
+        fprintf(stderr, "could not load file \"%s\"", filename);
+        exit(1);
+    }
+    while ((exp = read(in)) != NULL) {
+        result = eval(exp, the_global_environment);
+    }
+    fclose(in);
+    return result;
+}
+
 object *make_input_port(FILE *in);
 
 object *open_input_port_proc(object *arguments) {
@@ -1806,8 +1823,8 @@ int main(void) {
     //printf("test:\\n \\\" \n");
 
     init();
-  
-
+    load_proc_from_str("stdlib.scm");
+    printf("stdlib loaded.\n");
     while (1) {
         printf("> ");
         exp = read(stdin);
