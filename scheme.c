@@ -483,6 +483,28 @@ object *apply_proc(object *arguments) {
             "primitive procedure should not execute.\n");
     exit(1);
 }
+//eval
+object *interaction_environment_proc(object *arguments) {
+    return the_global_environment;
+}
+
+object *setup_environment(void);
+
+object *null_environment_proc(object *arguments) {
+    return setup_environment();
+}
+
+object *make_environment(void);
+
+object *environment_proc(object *arguments) {
+    return make_environment();
+}
+
+object *eval_proc(object *arguments) {
+    fprintf(stderr, "illegal state: The body of the eval "
+            "primitive procedure should not execute.\n");
+    exit(1);
+}
 
 object *make_compound_proc(object *parameters, object *body,
                            object* env) {
@@ -605,6 +627,63 @@ object *setup_environment(void) {
                       the_empty_environment);
     return initial_env;
 }
+//eval
+void populate_environment(object *env) {
+
+#define add_procedure(scheme_name, c_name)              \
+    define_variable(make_symbol(scheme_name),           \
+                    make_primitive_proc(c_name),        \
+                    env);
+
+    add_procedure("null?"      , is_null_proc);
+    add_procedure("boolean?"   , is_boolean_proc);
+    add_procedure("symbol?"    , is_symbol_proc);
+    add_procedure("integer?"   , is_integer_proc);
+    add_procedure("char?"      , is_char_proc);
+    add_procedure("string?"    , is_string_proc);
+    add_procedure("pair?"      , is_pair_proc);
+    add_procedure("procedure?" , is_procedure_proc);
+    
+    add_procedure("char->integer" , char_to_integer_proc);
+    add_procedure("integer->char" , integer_to_char_proc);
+    add_procedure("number->string", number_to_string_proc);
+    add_procedure("string->number", string_to_number_proc);
+    add_procedure("symbol->string", symbol_to_string_proc);
+    add_procedure("string->symbol", string_to_symbol_proc);
+      
+    add_procedure("+"        , add_proc);
+    add_procedure("-"        , sub_proc);
+    add_procedure("*"        , mul_proc);
+    add_procedure("quotient" , quotient_proc);
+    add_procedure("remainder", remainder_proc);
+    add_procedure("="        , is_number_equal_proc);
+    add_procedure("<"        , is_less_than_proc);
+    add_procedure(">"        , is_greater_than_proc);
+
+    add_procedure("cons"    , cons_proc);
+    add_procedure("car"     , car_proc);
+    add_procedure("cdr"     , cdr_proc);
+    add_procedure("set-car!", set_car_proc);
+    add_procedure("set-cdr!", set_cdr_proc);
+    add_procedure("list"    , list_proc);
+
+    add_procedure("eq?", is_eq_proc);
+
+    add_procedure("apply", apply_proc);
+    
+    add_procedure("interaction-environment", 
+                                     interaction_environment_proc);
+    add_procedure("null-environment", null_environment_proc);
+    add_procedure("environment"     , environment_proc);
+    add_procedure("eval"            , eval_proc);
+}
+object *make_environment(void) {
+    object *env;
+    
+    env = setup_environment();
+    populate_environment(env);
+    return env;
+}
 
 //init true and false which reader returns as singleton
 void init(void) {
@@ -642,50 +721,7 @@ void init(void) {
 
     the_empty_environment = the_empty_list;
 
-    the_global_environment = setup_environment();
-
-#define add_procedure(scheme_name, c_name)              \
-    define_variable(make_symbol(scheme_name),           \
-                    make_primitive_proc(c_name),        \
-                    the_global_environment);
-
-    add_procedure("null?"      , is_null_proc);
-    add_procedure("boolean?"   , is_boolean_proc);
-    add_procedure("symbol?"    , is_symbol_proc);
-    add_procedure("integer?"   , is_integer_proc);
-    add_procedure("char?"      , is_char_proc);
-    add_procedure("string?"    , is_string_proc);
-    add_procedure("pair?"      , is_pair_proc);
-    add_procedure("procedure?" , is_procedure_proc);
-    
-    add_procedure("char->integer" , char_to_integer_proc);
-    add_procedure("integer->char" , integer_to_char_proc);
-    add_procedure("number->string", number_to_string_proc);
-    add_procedure("string->number", string_to_number_proc);
-    add_procedure("symbol->string", symbol_to_string_proc);
-    add_procedure("string->symbol", string_to_symbol_proc);
-      
-    add_procedure("+"        , add_proc);
-    add_procedure("-"        , sub_proc);
-    add_procedure("*"        , mul_proc);
-    add_procedure("quotient" , quotient_proc);
-    add_procedure("remainder", remainder_proc);
-    add_procedure("="        , is_number_equal_proc);
-    add_procedure("<"        , is_less_than_proc);
-    add_procedure(">"        , is_greater_than_proc);
-
-    add_procedure("cons"    , cons_proc);
-    add_procedure("car"     , car_proc);
-    add_procedure("cdr"     , cdr_proc);
-    add_procedure("set-car!", set_car_proc);
-    add_procedure("set-cdr!", set_cdr_proc);
-    add_procedure("list"    , list_proc);
-
-    add_procedure("eq?", is_eq_proc);
-
-    //apply
-    add_procedure("apply", apply_proc);
-
+    the_global_environment = make_environment();
 }
 /***************************** READ ******************************/
 
@@ -1263,6 +1299,15 @@ object *apply_operands(object *arguments) {
     return prepare_apply_operands(cdr(arguments));
 }
 
+//eval
+object *eval_expression(object *arguments) {
+    return car(arguments);
+}
+
+object *eval_environment(object *arguments) {
+    return cadr(arguments);
+}
+
 object *eval(object *exp, object *env);
 
 //simple procedures
@@ -1374,6 +1419,14 @@ tailcall:
     else if (is_application(exp)) {
         procedure = eval(operator(exp), env);
         arguments = list_of_values(operands(exp), env);
+
+       /* handle eval specially for tail call requirement */
+        if (is_primitive_proc(procedure) && 
+            procedure->data.primitive_proc.fn == eval_proc) {
+            exp = eval_expression(arguments);
+            env = eval_environment(arguments);
+            goto tailcall;
+        }
 
         /* handle apply specially for tailcall requirement */
         if (is_primitive_proc(procedure) && 
