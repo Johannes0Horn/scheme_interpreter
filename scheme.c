@@ -477,6 +477,12 @@ object *is_eq_proc(object *arguments) {
             return (obj1 == obj2) ? true : false;
     }
 }
+//apply
+object *apply_proc(object *arguments) {
+    fprintf(stderr, "illegal state: The body of the apply "
+            "primitive procedure should not execute.\n");
+    exit(1);
+}
 
 object *make_compound_proc(object *parameters, object *body,
                            object* env) {
@@ -676,6 +682,10 @@ void init(void) {
     add_procedure("list"    , list_proc);
 
     add_procedure("eq?", is_eq_proc);
+
+    //apply
+    add_procedure("apply", apply_proc);
+
 }
 /***************************** READ ******************************/
 
@@ -1234,6 +1244,24 @@ object *or_tests(object *exp) {
     return cdr(exp);
 }
 
+//apply
+object *apply_operator(object *arguments) {
+    return car(arguments);
+}
+
+object *prepare_apply_operands(object *arguments) {
+    if (is_the_empty_list(cdr(arguments))) {
+        return car(arguments);
+    }
+    else {
+        return cons(car(arguments),
+                    prepare_apply_operands(cdr(arguments)));
+    }
+}
+
+object *apply_operands(object *arguments) {
+    return prepare_apply_operands(cdr(arguments));
+}
 
 object *eval(object *exp, object *env);
 
@@ -1346,6 +1374,15 @@ tailcall:
     else if (is_application(exp)) {
         procedure = eval(operator(exp), env);
         arguments = list_of_values(operands(exp), env);
+
+        /* handle apply specially for tailcall requirement */
+        if (is_primitive_proc(procedure) && 
+            procedure->data.primitive_proc.fn == apply_proc) {
+            procedure = apply_operator(arguments);
+            arguments = apply_operands(arguments);
+        }
+
+
         if (is_primitive_proc(procedure)) {
             return (procedure->data.primitive_proc.fn)(arguments);
         }
