@@ -927,11 +927,11 @@ object *make_environment(void) {
     return env;
 }
 
-//init true and false which reader returns as singleton
+//init 
 void init(void) {
     the_empty_list = alloc_object();
     the_empty_list->type = THE_EMPTY_LIST;
-
+    //true and false which reader returns as singleton
     false = alloc_object();
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
