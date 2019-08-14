@@ -1,3 +1,8 @@
+/*
+This Scheme Interprter is heavily inspired by Peter Michaux Scheme Interpreter:
+https://github.com/petermichaux/bootstrap-scheme/tree/master
+It´s restructered and Garbage Collection and floats are added.
+*/
 #include <stdlib.h> // standard
 #include <stdio.h>  //input output
 #include <string.h> //string
@@ -27,7 +32,7 @@ typedef struct schemeobject
     object_type type;
     //A union is a type consisting of a sequence of members whose storage overlaps
     //union is named data
-    char mark;
+    int mark;
     struct schemeobject *next;
     union {
         //A struct is a type consisting of a sequence of members whose storage is allocated in an ordered sequence
@@ -77,64 +82,146 @@ typedef struct schemeobject
         } output_port;
     } data;
 } schemeobject;
-
-//GC
-const int number_of_objects = 10000;
+//GC FUnktions
+//keeping track of the roots for the mark-and-sweep algorithm. 
+//The root objects are the ones where the mark phase starts. 
+//These are objects that may not have any other objects pointing to them but should still not be garbage collected
+schemeobject *root_list;
 
 //Let's define a linked list object:
 
 schemeobject *free_list;
 //init active List
 schemeobject *active_list;
-/* no Garbage Collector so far, so truely "unlimited extent" */
-//old
-/*
-object *alloc_object(void)
+const int number_of_objects = 1500;
+//print list
+/* Counts no. of nodes in linked list */
+int getCount(schemeobject *head)
 {
-    object *obj;
-
-    obj = malloc(sizeof(object));
-    if (obj == NULL)
-    {
-        fprintf(stderr, "out of memory\n");
-        exit(1);
-    }
-    return obj;
-}
-*/
-
-//modified
-schemeobject *alloc_object(void)
-{
-    //scan free_list for an available object
-
-    schemeobject *current = free_list;
-    //printf("%d\n", 1111111);
+    int count = 0;                // Initialize count
+    schemeobject *current = head; // Initialize current
+    printf("List count start is at address: %p\n", (void *)current);
+    printf("List count start->next is at address: %p\n", (void *)current->next);
 
     while (current != NULL)
     {
+        count++;
+        current = current->next;
+        if (count==1498){
+                printf("List count last is at address: %p\n", (void *)current);
 
-        //check if schemeobject is free
-        if (current->mark == 0)
-        {
-            //its free!
-            //unfree
-            current->mark = 1;
-            //return schemeobject to use
-            //printf("%d\n", current->mark);
-            return current;
         }
-        else
-        {
-            //not free
-        }
-        //printf("%d\n", current->mark);
+    }
+    return count;
+}
+void print_list(schemeobject *head)
+{
+    schemeobject *current = head;
+
+    while (current != NULL)
+    {
+        printf("%d\n", current->mark);
         current = current->next;
     }
-    fprintf(stderr, "oout of memory\n");
-    exit(1);
+}
+//print number of free items
+void print_objects_status()
+{
+    int number_of_free = getCount(free_list);
+    int number_of_active = getCount(active_list);
+    float percentage_used = (float)number_of_active / number_of_objects * 100.0;
+
+    printf("%s", "Number of free Objects available: ");
+    printf("%d\n", number_of_free);
+    printf("%s", "Number of used Objects: ");
+    printf("%d\n", number_of_active);
+    printf("Percentage used = %.2f%%\n", percentage_used);
+}
+//add item to end of list
+void push_newschemeobject_to_linked_list(schemeobject *head, int mark)
+{
+    schemeobject *current = head;
+    while (current->next != NULL)
+    {
+        current = current->next;
+    }
+
+    /* now we can add a new variable */
+    current->next = malloc(sizeof(schemeobject));
+    current->next->mark = mark;
+    current->next->next = NULL;
 }
 
+//GC
+
+//alloc object , later GC
+schemeobject *alloc_object(int use_gc)
+{
+    //look if free_list has at least one available object
+    if (free_list != NULL)
+    {
+        //found free schemeobject!
+        //save adress of free object
+        schemeobject *tempfree = free_list;
+
+        //printf("variable free_list is at address: %p\n", (void *)free_list);
+        //printf("variable tempfree is at address: %p\n", (void *)tempfree);
+        //printf("variable free_list->next is at address: %p\n", (void *)free_list->next);
+
+        //drop first object from free list:
+        free_list = free_list->next;
+        //drop next reference? why here already necessary?
+        tempfree->next=NULL;
+
+        //printf("variable free_list AFTER is at address: %p\n", (void *)free_list);
+        //printf("variable tempfree AFTER is at address: %p\n", (void *)tempfree);
+        //printf("variable free_list->next AFTER is at address: %p\n", (void *)free_list->next);
+
+        //move temp to active list:
+        //check if active list is NULL:
+        if (active_list == NULL)
+        {
+            //init active List:
+            active_list = tempfree;
+        }
+        else
+        { //add to active List:
+
+            schemeobject *currentactive = active_list;
+
+            while (currentactive->next != NULL)
+            {
+                currentactive = currentactive->next;
+            }
+            //add free item to last item in active list
+            currentactive->next = tempfree;
+            //print_objects_status();
+
+            currentactive->next->next = NULL;
+        }
+
+        //return schemeobject to use
+        //printf("%d\n", current->mark);
+
+        return tempfree;
+    }
+    //free list has no object to offer, start GC!
+    /*if (use_gc == 1)
+    {
+        //gc();
+        return alloc_object(0);
+    }
+    */
+    fprintf(stderr, "out of memory\n");
+    exit(1);
+}
+//gc function
+void gc(){
+//markphase:
+
+
+
+}
 
 
 schemeobject *the_empty_list;
@@ -209,7 +296,7 @@ schemeobject *make_symbol(char *value)
     };
 
     /* create the symbol and add it to the symbol table */
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = SYMBOL;
     obj->data.symbol.value = malloc(strlen(value) + 1);
     if (obj->data.symbol.value == NULL)
@@ -222,7 +309,7 @@ schemeobject *make_symbol(char *value)
     return obj;
 }
 
-char is_symbol (schemeobject *obj)
+char is_symbol(schemeobject *obj)
 {
     return obj->type == SYMBOL;
 }
@@ -231,7 +318,7 @@ schemeobject *make_fixnum(long value)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = FIXNUM;
     obj->data.fixnum.value = value;
     return obj;
@@ -246,7 +333,7 @@ schemeobject *make_character(char value)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = CHARACTER;
     obj->data.character.value = value;
     return obj;
@@ -256,7 +343,7 @@ schemeobject *make_string(char *value)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = STRING;
     obj->data.string.value = malloc(strlen(value) + 1);
     if (obj->data.string.value == NULL)
@@ -268,12 +355,12 @@ schemeobject *make_string(char *value)
     return obj;
 }
 
-char is_string (schemeobject *obj)
+char is_string(schemeobject *obj)
 {
     return obj->type == STRING;
 }
 
-char is_character (schemeobject *obj)
+char is_character(schemeobject *obj)
 {
     return obj->type == CHARACTER;
 }
@@ -283,7 +370,7 @@ schemeobject *cons(schemeobject *car, schemeobject *cdr)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = PAIR;
     obj->data.pair.car = car;
     obj->data.pair.cdr = cdr;
@@ -350,7 +437,7 @@ schemeobject *make_primitive_proc(
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = PRIMITIVE_PROC;
     obj->data.primitive_proc.fn = fn;
     return obj;
@@ -419,7 +506,7 @@ schemeobject *integer_to_char_proc(schemeobject *arguments)
     return make_character((car(arguments))->data.fixnum.value);
 }
 
-schemeobject *number_to_string_proc (schemeobject *arguments)
+schemeobject *number_to_string_proc(schemeobject *arguments)
 {
     char buffer[100];
 
@@ -427,22 +514,22 @@ schemeobject *number_to_string_proc (schemeobject *arguments)
     return make_string(buffer);
 }
 
-schemeobject *string_to_number_proc (schemeobject *arguments)
+schemeobject *string_to_number_proc(schemeobject *arguments)
 {
     return make_fixnum(atoi((car(arguments))->data.string.value));
 }
 
-schemeobject *symbol_to_string_proc (schemeobject *arguments)
+schemeobject *symbol_to_string_proc(schemeobject *arguments)
 {
     return make_string((car(arguments))->data.symbol.value);
 }
 
-schemeobject *string_to_symbol_proc (schemeobject *arguments)
+schemeobject *string_to_symbol_proc(schemeobject *arguments)
 {
     return make_symbol((car(arguments))->data.string.value);
 }
 
-schemeobject *add_proc (schemeobject *arguments)
+schemeobject *add_proc(schemeobject *arguments)
 {
     long result = 0;
 
@@ -454,7 +541,7 @@ schemeobject *add_proc (schemeobject *arguments)
     return make_fixnum(result);
 }
 
-schemeobject *sub_proc (schemeobject *arguments)
+schemeobject *sub_proc(schemeobject *arguments)
 {
     long result;
 
@@ -466,7 +553,7 @@ schemeobject *sub_proc (schemeobject *arguments)
     return make_fixnum(result);
 }
 
-schemeobject *mul_proc (schemeobject *arguments)
+schemeobject *mul_proc(schemeobject *arguments)
 {
     long result = 1;
 
@@ -478,21 +565,21 @@ schemeobject *mul_proc (schemeobject *arguments)
     return make_fixnum(result);
 }
 
-schemeobject *quotient_proc (schemeobject *arguments)
+schemeobject *quotient_proc(schemeobject *arguments)
 {
     return make_fixnum(
         ((car(arguments))->data.fixnum.value) /
         ((cadr(arguments))->data.fixnum.value));
 }
 
-schemeobject *remainder_proc (schemeobject *arguments)
+schemeobject *remainder_proc(schemeobject *arguments)
 {
     return make_fixnum(
         ((car(arguments))->data.fixnum.value) %
         ((cadr(arguments))->data.fixnum.value));
 }
 
-schemeobject *is_number_equal_proc (schemeobject *arguments)
+schemeobject *is_number_equal_proc(schemeobject *arguments)
 {
     long value;
 
@@ -507,7 +594,7 @@ schemeobject *is_number_equal_proc (schemeobject *arguments)
     return true;
 }
 
-schemeobject *is_less_than_proc (schemeobject *arguments)
+schemeobject *is_less_than_proc(schemeobject *arguments)
 {
     long previous;
     long next;
@@ -528,7 +615,7 @@ schemeobject *is_less_than_proc (schemeobject *arguments)
     return true;
 }
 
-schemeobject *is_greater_than_proc (schemeobject *arguments)
+schemeobject *is_greater_than_proc(schemeobject *arguments)
 {
     long previous;
     long next;
@@ -549,39 +636,39 @@ schemeobject *is_greater_than_proc (schemeobject *arguments)
     return true;
 }
 
-schemeobject *cons_proc (schemeobject *arguments)
+schemeobject *cons_proc(schemeobject *arguments)
 {
     return cons(car(arguments), cadr(arguments));
 }
 
-schemeobject *car_proc (schemeobject *arguments)
+schemeobject *car_proc(schemeobject *arguments)
 {
     return caar(arguments);
 }
 
-schemeobject *cdr_proc (schemeobject *arguments)
+schemeobject *cdr_proc(schemeobject *arguments)
 {
     return cdar(arguments);
 }
 
-schemeobject *set_car_proc (schemeobject *arguments)
+schemeobject *set_car_proc(schemeobject *arguments)
 {
     set_car(car(arguments), cadr(arguments));
     return ok_symbol;
 }
 
-schemeobject *set_cdr_proc (schemeobject *arguments)
+schemeobject *set_cdr_proc(schemeobject *arguments)
 {
     set_cdr(car(arguments), cadr(arguments));
     return ok_symbol;
 }
 
-schemeobject *list_proc (schemeobject *arguments)
+schemeobject *list_proc(schemeobject *arguments)
 {
     return arguments;
 }
 
-schemeobject *is_eq_proc (schemeobject *arguments)
+schemeobject *is_eq_proc(schemeobject *arguments)
 {
     schemeobject *obj1;
     schemeobject *obj2;
@@ -618,33 +705,33 @@ schemeobject *is_eq_proc (schemeobject *arguments)
     }
 }
 //apply
-schemeobject *apply_proc (schemeobject *arguments)
+schemeobject *apply_proc(schemeobject *arguments)
 {
     fprintf(stderr, "illegal state: The body of the apply "
                     "primitive procedure should not execute.\n");
     exit(1);
 }
 //eval
-schemeobject *interaction_environment_proc (schemeobject *arguments)
+schemeobject *interaction_environment_proc(schemeobject *arguments)
 {
     return the_global_environment;
 }
 
 schemeobject *setup_environment(void);
 
-schemeobject *null_environment_proc (schemeobject *arguments)
+schemeobject *null_environment_proc(schemeobject *arguments)
 {
     return setup_environment();
 }
 
 schemeobject *make_environment(void);
 
-schemeobject *environment_proc (schemeobject *arguments)
+schemeobject *environment_proc(schemeobject *arguments)
 {
     return make_environment();
 }
 
-schemeobject *eval_proc (schemeobject *arguments)
+schemeobject *eval_proc(schemeobject *arguments)
 {
     fprintf(stderr, "illegal state: The body of the eval "
                     "primitive procedure should not execute.\n");
@@ -652,9 +739,9 @@ schemeobject *eval_proc (schemeobject *arguments)
 }
 //i/o
 schemeobject *read(FILE *in);
-schemeobject *eval (schemeobject *exp, schemeobject *env);
+schemeobject *eval(schemeobject *exp, schemeobject *env);
 
-schemeobject *load_proc (schemeobject *arguments)
+schemeobject *load_proc(schemeobject *arguments)
 {
     char *filename;
     FILE *in;
@@ -698,7 +785,7 @@ schemeobject *load_proc_from_str(char *filename)
 
 schemeobject *make_input_port(FILE *in);
 
-schemeobject *open_input_port_proc (schemeobject *arguments)
+schemeobject *open_input_port_proc(schemeobject *arguments)
 {
     char *filename;
     FILE *in;
@@ -713,7 +800,7 @@ schemeobject *open_input_port_proc (schemeobject *arguments)
     return make_input_port(in);
 }
 
-schemeobject *close_input_port_proc (schemeobject *arguments)
+schemeobject *close_input_port_proc(schemeobject *arguments)
 {
     int result;
 
@@ -726,14 +813,14 @@ schemeobject *close_input_port_proc (schemeobject *arguments)
     return ok_symbol;
 }
 
-char is_input_port (schemeobject *obj);
+char is_input_port(schemeobject *obj);
 
-schemeobject *is_input_port_proc (schemeobject *arguments)
+schemeobject *is_input_port_proc(schemeobject *arguments)
 {
     return is_input_port(car(arguments)) ? true : false;
 }
 
-schemeobject *read_proc (schemeobject *arguments)
+schemeobject *read_proc(schemeobject *arguments)
 {
     FILE *in;
     schemeobject *result;
@@ -743,7 +830,7 @@ schemeobject *read_proc (schemeobject *arguments)
     return (result == NULL) ? eof_object : result;
 }
 
-schemeobject *read_char_proc (schemeobject *arguments)
+schemeobject *read_char_proc(schemeobject *arguments)
 {
     FILE *in;
     int result;
@@ -755,7 +842,7 @@ schemeobject *read_char_proc (schemeobject *arguments)
 
 int peek(FILE *in);
 
-schemeobject *peek_char_proc (schemeobject *arguments)
+schemeobject *peek_char_proc(schemeobject *arguments)
 {
     FILE *in;
     int result;
@@ -765,16 +852,16 @@ schemeobject *peek_char_proc (schemeobject *arguments)
     return (result == EOF) ? eof_object : make_character(result);
 }
 
-char is_eof_object (schemeobject *obj);
+char is_eof_object(schemeobject *obj);
 
-schemeobject *is_eof_object_proc (schemeobject *arguments)
+schemeobject *is_eof_object_proc(schemeobject *arguments)
 {
     return is_eof_object(car(arguments)) ? true : false;
 }
 
 schemeobject *make_output_port(FILE *in);
 
-schemeobject *open_output_port_proc (schemeobject *arguments)
+schemeobject *open_output_port_proc(schemeobject *arguments)
 {
     char *filename;
     FILE *out;
@@ -789,7 +876,7 @@ schemeobject *open_output_port_proc (schemeobject *arguments)
     return make_output_port(out);
 }
 
-schemeobject *close_output_port_proc (schemeobject *arguments)
+schemeobject *close_output_port_proc(schemeobject *arguments)
 {
     int result;
 
@@ -802,14 +889,14 @@ schemeobject *close_output_port_proc (schemeobject *arguments)
     return ok_symbol;
 }
 
-char is_output_port (schemeobject *obj);
+char is_output_port(schemeobject *obj);
 
-schemeobject *is_output_port_proc (schemeobject *arguments)
+schemeobject *is_output_port_proc(schemeobject *arguments)
 {
     return is_output_port(car(arguments)) ? true : false;
 }
 
-schemeobject *write_char_proc (schemeobject *arguments)
+schemeobject *write_char_proc(schemeobject *arguments)
 {
     schemeobject *character;
     FILE *out;
@@ -824,7 +911,7 @@ schemeobject *write_char_proc (schemeobject *arguments)
 
 void write(FILE *out, schemeobject *obj);
 
-schemeobject *write_proc (schemeobject *arguments)
+schemeobject *write_proc(schemeobject *arguments)
 {
     schemeobject *exp;
     FILE *out;
@@ -837,7 +924,7 @@ schemeobject *write_proc (schemeobject *arguments)
     return ok_symbol;
 }
 
-schemeobject *error_proc (schemeobject *arguments)
+schemeobject *error_proc(schemeobject *arguments)
 {
     while (!is_the_empty_list(arguments))
     {
@@ -849,12 +936,12 @@ schemeobject *error_proc (schemeobject *arguments)
     exit(1);
 }
 
-schemeobject *make_compound_proc (schemeobject *parameters, schemeobject *body,
-                           schemeobject *env)
+schemeobject *make_compound_proc(schemeobject *parameters, schemeobject *body,
+                                 schemeobject *env)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = COMPOUND_PROC;
     obj->data.compound_proc.parameters = parameters;
     obj->data.compound_proc.body = body;
@@ -862,7 +949,7 @@ schemeobject *make_compound_proc (schemeobject *parameters, schemeobject *body,
     return obj;
 }
 
-char is_compound_proc (schemeobject *obj)
+char is_compound_proc(schemeobject *obj)
 {
     return obj->type == COMPOUND_PROC;
 }
@@ -871,13 +958,13 @@ schemeobject *make_input_port(FILE *stream)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = INPUT_PORT;
     obj->data.input_port.stream = stream;
     return obj;
 }
 
-char is_input_port (schemeobject *obj)
+char is_input_port(schemeobject *obj)
 {
     return obj->type == INPUT_PORT;
 }
@@ -886,62 +973,62 @@ schemeobject *make_output_port(FILE *stream)
 {
     schemeobject *obj;
 
-    obj = alloc_object();
+    obj = alloc_object(1);
     obj->type = OUTPUT_PORT;
     obj->data.output_port.stream = stream;
     return obj;
 }
 
-char is_output_port (schemeobject *obj)
+char is_output_port(schemeobject *obj)
 {
     return obj->type == OUTPUT_PORT;
 }
 
-char is_eof_object (schemeobject *obj)
+char is_eof_object(schemeobject *obj)
 {
     return obj == eof_object;
 }
 
 //environment
-schemeobject *enclosing_environment (schemeobject *env)
+schemeobject *enclosing_environment(schemeobject *env)
 {
     return cdr(env);
 }
 
-schemeobject *first_frame (schemeobject *env)
+schemeobject *first_frame(schemeobject *env)
 {
     return car(env);
 }
 
-schemeobject *make_frame (schemeobject *variables, schemeobject *values)
+schemeobject *make_frame(schemeobject *variables, schemeobject *values)
 {
     return cons(variables, values);
 }
 
-schemeobject *frame_variables (schemeobject *frame)
+schemeobject *frame_variables(schemeobject *frame)
 {
     return car(frame);
 }
 
-schemeobject *frame_values (schemeobject *frame)
+schemeobject *frame_values(schemeobject *frame)
 {
     return cdr(frame);
 }
 
-void add_binding_to_frame (schemeobject *var, schemeobject *val,
+void add_binding_to_frame(schemeobject *var, schemeobject *val,
                           schemeobject *frame)
 {
     set_car(frame, cons(var, car(frame)));
     set_cdr(frame, cons(val, cdr(frame)));
 }
 
-schemeobject *extend_environment (schemeobject *vars, schemeobject *vals,
-                           schemeobject *base_env)
+schemeobject *extend_environment(schemeobject *vars, schemeobject *vals,
+                                 schemeobject *base_env)
 {
     return cons(make_frame(vars, vals), base_env);
 }
 
-schemeobject *lookup_variable_value (schemeobject *var, schemeobject *env)
+schemeobject *lookup_variable_value(schemeobject *var, schemeobject *env)
 {
     schemeobject *frame;
     schemeobject *vars;
@@ -966,7 +1053,7 @@ schemeobject *lookup_variable_value (schemeobject *var, schemeobject *env)
     exit(1);
 }
 
-void set_variable_value (schemeobject *var, schemeobject *val, schemeobject *env)
+void set_variable_value(schemeobject *var, schemeobject *val, schemeobject *env)
 {
     schemeobject *frame;
     schemeobject *vars;
@@ -993,7 +1080,7 @@ void set_variable_value (schemeobject *var, schemeobject *val, schemeobject *env
     exit(1);
 }
 
-void define_variable (schemeobject *var, schemeobject *val, schemeobject *env)
+void define_variable(schemeobject *var, schemeobject *val, schemeobject *env)
 {
     schemeobject *frame;
     schemeobject *vars;
@@ -1027,7 +1114,7 @@ schemeobject *setup_environment(void)
     return initial_env;
 }
 //eval
-void populate_environment (schemeobject *env)
+void populate_environment(schemeobject *env)
 {
 
 #define add_procedure(scheme_name, c_name)       \
@@ -1103,121 +1190,41 @@ schemeobject *make_environment(void)
     return env;
 }
 
-//print list
-
-void print_list(schemeobject *head)
-{
-    schemeobject *current = head;
-
-    while (current != NULL)
-    {
-        printf("%d\n", current->mark);
-        current = current->next;
-    }
-}
-//print number of free items
-void print_objects_status(schemeobject *head)
-{
-    schemeobject *current = head;
-    int number_of_free = 0;
-    int number_of_used = 0;
-    while (current != NULL)
-    {
-        if (current->mark==0){
-            number_of_free++;
-        }
-        else if(current->mark==1)
-        {
-            number_of_used++;
-        }
-        
-        current = current->next;
-    }
-
-    float percentage_used = (float)number_of_used / number_of_objects * 100.0;
-
-    printf("%s", "Number of free Objects available: ");
-    printf("%d\n", number_of_free );
-    printf("%s", "Number of Objects used: ");
-    printf("%d\n", number_of_used );
-    printf("Percentage used = %.2f%%\n", percentage_used);
-
-}
-//add item to end of list
-void push_linked_list(schemeobject *head, char mark) //, int end)
-{
-    schemeobject *current = head;
-    while (current->next != NULL)
-    {
-        current = current->next;
-    }
-
-    /* now we can add a new variable */
-
-    current->next = malloc(sizeof(schemeobject));
-    current->next->mark = mark;
-    current->next->next = NULL;
-}
-/*
-object *alloc_object(void) {
-    object *obj;
-    obj-->
-
-    obj = malloc(sizeof(object));
-    if (obj == NULL) {
-        fprintf(stderr, "out of memory\n");
-        exit(1);
-    }
-    return obj;
-}
-*/
 //init
 void init(void)
 {
 
     //GC
-    //Now we can use the nodes. Let's create a local variable which points to the first item of the list (called head).
+    // create a local variable which points to the first item of the list (called head).
     //-->init list of objects
     schemeobject *head = NULL;
     head = malloc(sizeof(schemeobject));
     head->mark = 0;
     head->next = NULL;
-    int i;
+    long i;
     for (i = 1; i < number_of_objects; ++i)
     {
-        push_linked_list(head, 0);
+        push_newschemeobject_to_linked_list(head, i);
     }
-    //init free_list call by reference
+    printf("variable head is at address: %p\n", (void *)head);
+
+    //init free_list
     free_list = head;
     //init active List
     active_list = NULL;
     //printf("%s", "free_List:"); // %s is format specifier
     //print_list(free_list);
 
-    /*
-    old version of gc
-    typedef struct header {
-        unsigned int    size;
-        struct header   *next;
-    } header_t;
-
-    static header_t base;           // Zero sized block to get us started. 
-    static header_t *freep = &base; // Points to first free block of memory. 
-    static header_t *usedp;         // Points to first used block of memory. 
-
-    //define malloc
-
-    #define MIN_ALLOC_SIZE 4096     // We allocate blocks in page sized chunks. 
-    */
-
-    the_empty_list = alloc_object();
+    the_empty_list = alloc_object(1);
     the_empty_list->type = THE_EMPTY_LIST;
     //true and false which reader returns as singleton
-    false = alloc_object();
+    false = alloc_object(1);
+
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
 
-    true = alloc_object();
+    true = alloc_object(1);
+
     true->type = BOOLEAN;
     true->data.boolean.value = 1;
 
@@ -1243,14 +1250,12 @@ void init(void)
     or_symbol = make_symbol("or");
 
     //i/o
-    eof_object = alloc_object();
+    eof_object = alloc_object(1);
     eof_object->type = EOF_OBJECT;
 
     the_empty_environment = the_empty_list;
 
     the_global_environment = make_environment();
-    print_objects_status(free_list);
-
 }
 /***************************** READ ******************************/
 
@@ -1572,7 +1577,7 @@ schemeobject *read(FILE *in)
 
 /*************************** EVALUATE ****************************/
 
-char is_self_evaluating (schemeobject *exp)
+char is_self_evaluating(schemeobject *exp)
 {
     return is_boolean(exp) ||
            is_fixnum(exp) ||
@@ -1580,12 +1585,12 @@ char is_self_evaluating (schemeobject *exp)
            is_string(exp);
 }
 
-char is_variable (schemeobject *expression)
+char is_variable(schemeobject *expression)
 {
     return is_symbol(expression);
 }
 
-char is_tagged_list (schemeobject *expression, schemeobject *tag)
+char is_tagged_list(schemeobject *expression, schemeobject *tag)
 {
     schemeobject *the_car;
 
@@ -1597,36 +1602,36 @@ char is_tagged_list (schemeobject *expression, schemeobject *tag)
     return 0;
 }
 
-char is_quoted (schemeobject *expression)
+char is_quoted(schemeobject *expression)
 {
     return is_tagged_list(expression, quote_symbol);
 }
 
-schemeobject *text_of_quotation (schemeobject *exp)
+schemeobject *text_of_quotation(schemeobject *exp)
 {
     return cadr(exp);
 }
 
-char is_assignment (schemeobject *exp)
+char is_assignment(schemeobject *exp)
 {
     return is_tagged_list(exp, set_symbol);
 }
-schemeobject *assignment_variable (schemeobject *exp)
+schemeobject *assignment_variable(schemeobject *exp)
 {
     return car(cdr(exp));
 }
 
-schemeobject *assignment_value (schemeobject *exp)
+schemeobject *assignment_value(schemeobject *exp)
 {
     return car(cdr(cdr(exp)));
 }
 
-char is_definition (schemeobject *exp)
+char is_definition(schemeobject *exp)
 {
     return is_tagged_list(exp, define_symbol);
 }
 
-schemeobject *definition_variable (schemeobject *exp)
+schemeobject *definition_variable(schemeobject *exp)
 {
     if (is_symbol(cadr(exp)))
     {
@@ -1638,9 +1643,9 @@ schemeobject *definition_variable (schemeobject *exp)
     }
 }
 
-schemeobject *make_lambda (schemeobject *parameters, schemeobject *body);
+schemeobject *make_lambda(schemeobject *parameters, schemeobject *body);
 
-schemeobject *definition_value (schemeobject *exp)
+schemeobject *definition_value(schemeobject *exp)
 {
     if (is_symbol(cadr(exp)))
     {
@@ -1652,8 +1657,8 @@ schemeobject *definition_value (schemeobject *exp)
     }
 }
 
-schemeobject *make_if (schemeobject *predicate, schemeobject *consequent,
-                schemeobject *alternative)
+schemeobject *make_if(schemeobject *predicate, schemeobject *consequent,
+                      schemeobject *alternative)
 {
     return cons(if_symbol,
                 cons(predicate,
@@ -1661,22 +1666,22 @@ schemeobject *make_if (schemeobject *predicate, schemeobject *consequent,
                           cons(alternative, the_empty_list))));
 }
 
-char is_if (schemeobject *expression)
+char is_if(schemeobject *expression)
 {
     return is_tagged_list(expression, if_symbol);
 }
 
-schemeobject *if_predicate (schemeobject *exp)
+schemeobject *if_predicate(schemeobject *exp)
 {
     return cadr(exp);
 }
 
-schemeobject *if_consequent (schemeobject *exp)
+schemeobject *if_consequent(schemeobject *exp)
 {
     return caddr(exp);
 }
 
-schemeobject *if_alternative (schemeobject *exp)
+schemeobject *if_alternative(schemeobject *exp)
 {
     if (is_the_empty_list(cdddr(exp)))
     {
@@ -1688,82 +1693,82 @@ schemeobject *if_alternative (schemeobject *exp)
     }
 }
 
-schemeobject *make_lambda (schemeobject *parameters, schemeobject *body)
+schemeobject *make_lambda(schemeobject *parameters, schemeobject *body)
 {
     return cons(lambda_symbol, cons(parameters, body));
 }
 
-char is_lambda (schemeobject *exp)
+char is_lambda(schemeobject *exp)
 {
     return is_tagged_list(exp, lambda_symbol);
 }
 
-schemeobject *lambda_parameters (schemeobject *exp)
+schemeobject *lambda_parameters(schemeobject *exp)
 {
     return cadr(exp);
 }
 
-schemeobject *lambda_body (schemeobject *exp)
+schemeobject *lambda_body(schemeobject *exp)
 {
     return cddr(exp);
 }
 //begin
-schemeobject *make_begin (schemeobject *exp)
+schemeobject *make_begin(schemeobject *exp)
 {
     return cons(begin_symbol, exp);
 }
 
-char is_begin (schemeobject *exp)
+char is_begin(schemeobject *exp)
 {
     return is_tagged_list(exp, begin_symbol);
 }
 
-schemeobject *begin_actions (schemeobject *exp)
+schemeobject *begin_actions(schemeobject *exp)
 {
     return cdr(exp);
 }
 
-char is_last_exp (schemeobject *seq)
+char is_last_exp(schemeobject *seq)
 {
     return is_the_empty_list(cdr(seq));
 }
 
-schemeobject *first_exp (schemeobject *seq)
+schemeobject *first_exp(schemeobject *seq)
 {
     return car(seq);
 }
 
-schemeobject *rest_exps (schemeobject *seq)
+schemeobject *rest_exps(schemeobject *seq)
 {
     return cdr(seq);
 }
 
-char is_cond (schemeobject *exp)
+char is_cond(schemeobject *exp)
 {
     return is_tagged_list(exp, cond_symbol);
 }
 
-schemeobject *cond_clauses (schemeobject *exp)
+schemeobject *cond_clauses(schemeobject *exp)
 {
     return cdr(exp);
 }
 
-schemeobject *cond_predicate (schemeobject *clause)
+schemeobject *cond_predicate(schemeobject *clause)
 {
     return car(clause);
 }
 
-schemeobject *cond_actions (schemeobject *clause)
+schemeobject *cond_actions(schemeobject *clause)
 {
     return cdr(clause);
 }
 
-char is_cond_else_clause (schemeobject *clause)
+char is_cond_else_clause(schemeobject *clause)
 {
     return cond_predicate(clause) == else_symbol;
 }
 
-schemeobject *sequence_to_exp (schemeobject *seq)
+schemeobject *sequence_to_exp(schemeobject *seq)
 {
     if (is_the_empty_list(seq))
     {
@@ -1779,7 +1784,7 @@ schemeobject *sequence_to_exp (schemeobject *seq)
     }
 }
 
-schemeobject *expand_clauses (schemeobject *clauses)
+schemeobject *expand_clauses(schemeobject *clauses)
 {
     schemeobject *first;
     schemeobject *rest;
@@ -1813,93 +1818,93 @@ schemeobject *expand_clauses (schemeobject *clauses)
     }
 }
 
-schemeobject *cond_to_if (schemeobject *exp)
+schemeobject *cond_to_if(schemeobject *exp)
 {
     return expand_clauses(cond_clauses(exp));
 }
 //let
-schemeobject *make_application (schemeobject *operator, schemeobject *operands)
+schemeobject *make_application(schemeobject *operator, schemeobject *operands)
 {
     return cons(operator, operands);
 }
 
-char is_application (schemeobject *exp)
+char is_application(schemeobject *exp)
 {
     return is_pair(exp);
 }
 
-schemeobject *operator (schemeobject *exp)
+schemeobject *operator(schemeobject *exp)
 {
     return car(exp);
 }
 
-schemeobject *operands (schemeobject *exp)
+schemeobject *operands(schemeobject *exp)
 {
     return cdr(exp);
 }
 
-char is_no_operands (schemeobject *ops)
+char is_no_operands(schemeobject *ops)
 {
     return is_the_empty_list(ops);
 }
 
-schemeobject *first_operand (schemeobject *ops)
+schemeobject *first_operand(schemeobject *ops)
 {
     return car(ops);
 }
 
-schemeobject *rest_operands (schemeobject *ops)
+schemeobject *rest_operands(schemeobject *ops)
 {
     return cdr(ops);
 }
 
 //let
-char is_let (schemeobject *exp)
+char is_let(schemeobject *exp)
 {
     return is_tagged_list(exp, let_symbol);
 }
 
-schemeobject *let_bindings (schemeobject *exp)
+schemeobject *let_bindings(schemeobject *exp)
 {
     return cadr(exp);
 }
 
-schemeobject *let_body (schemeobject *exp)
+schemeobject *let_body(schemeobject *exp)
 {
     return cddr(exp);
 }
 
-schemeobject *binding_parameter (schemeobject *binding)
+schemeobject *binding_parameter(schemeobject *binding)
 {
     return car(binding);
 }
 
-schemeobject *binding_argument (schemeobject *binding)
+schemeobject *binding_argument(schemeobject *binding)
 {
     return cadr(binding);
 }
 
-schemeobject *bindings_parameters (schemeobject *bindings)
+schemeobject *bindings_parameters(schemeobject *bindings)
 {
     return is_the_empty_list(bindings) ? the_empty_list : cons(binding_parameter(car(bindings)), bindings_parameters(cdr(bindings)));
 }
 
-schemeobject *bindings_arguments (schemeobject *bindings)
+schemeobject *bindings_arguments(schemeobject *bindings)
 {
     return is_the_empty_list(bindings) ? the_empty_list : cons(binding_argument(car(bindings)), bindings_arguments(cdr(bindings)));
 }
 
-schemeobject *let_parameters (schemeobject *exp)
+schemeobject *let_parameters(schemeobject *exp)
 {
     return bindings_parameters(let_bindings(exp));
 }
 
-schemeobject *let_arguments (schemeobject *exp)
+schemeobject *let_arguments(schemeobject *exp)
 {
     return bindings_arguments(let_bindings(exp));
 }
 
-schemeobject *let_to_application (schemeobject *exp)
+schemeobject *let_to_application(schemeobject *exp)
 {
     return make_application(
         make_lambda(let_parameters(exp),
@@ -1907,33 +1912,33 @@ schemeobject *let_to_application (schemeobject *exp)
         let_arguments(exp));
 }
 //and or
-char is_and (schemeobject *exp)
+char is_and(schemeobject *exp)
 {
     return is_tagged_list(exp, and_symbol);
 }
 
-schemeobject *and_tests (schemeobject *exp)
+schemeobject *and_tests(schemeobject *exp)
 {
     return cdr(exp);
 }
 
-char is_or (schemeobject *exp)
+char is_or(schemeobject *exp)
 {
     return is_tagged_list(exp, or_symbol);
 }
 
-schemeobject *or_tests (schemeobject *exp)
+schemeobject *or_tests(schemeobject *exp)
 {
     return cdr(exp);
 }
 
 //apply
-schemeobject *apply_operator (schemeobject *arguments)
+schemeobject *apply_operator(schemeobject *arguments)
 {
     return car(arguments);
 }
 
-schemeobject *prepare_apply_operands (schemeobject *arguments)
+schemeobject *prepare_apply_operands(schemeobject *arguments)
 {
     if (is_the_empty_list(cdr(arguments)))
     {
@@ -1946,26 +1951,26 @@ schemeobject *prepare_apply_operands (schemeobject *arguments)
     }
 }
 
-schemeobject *apply_operands (schemeobject *arguments)
+schemeobject *apply_operands(schemeobject *arguments)
 {
     return prepare_apply_operands(cdr(arguments));
 }
 
 //eval
-schemeobject *eval_expression (schemeobject *arguments)
+schemeobject *eval_expression(schemeobject *arguments)
 {
     return car(arguments);
 }
 
-schemeobject *eval_environment (schemeobject *arguments)
+schemeobject *eval_environment(schemeobject *arguments)
 {
     return cadr(arguments);
 }
 
-schemeobject *eval (schemeobject *exp, schemeobject *env);
+schemeobject *eval(schemeobject *exp, schemeobject *env);
 
 //simple procedures
-schemeobject *list_of_values (schemeobject *exps, schemeobject *env)
+schemeobject *list_of_values(schemeobject *exps, schemeobject *env)
 {
     if (is_no_operands(exps))
     {
@@ -1978,7 +1983,7 @@ schemeobject *list_of_values (schemeobject *exps, schemeobject *env)
     }
 }
 //
-schemeobject *eval_assignment (schemeobject *exp, schemeobject *env)
+schemeobject *eval_assignment(schemeobject *exp, schemeobject *env)
 {
     set_variable_value(assignment_variable(exp),
                        eval(assignment_value(exp), env),
@@ -1986,7 +1991,7 @@ schemeobject *eval_assignment (schemeobject *exp, schemeobject *env)
     return ok_symbol;
 }
 
-schemeobject *eval_definition (schemeobject *exp, schemeobject *env)
+schemeobject *eval_definition(schemeobject *exp, schemeobject *env)
 {
     define_variable(definition_variable(exp),
                     eval(definition_value(exp), env),
@@ -1994,7 +1999,7 @@ schemeobject *eval_definition (schemeobject *exp, schemeobject *env)
     return ok_symbol;
 }
 
-schemeobject *eval (schemeobject *exp, schemeobject *env)
+schemeobject *eval(schemeobject *exp, schemeobject *env)
 {
     schemeobject *procedure;
     schemeobject *arguments;
@@ -2269,7 +2274,8 @@ void sub(int *a)
 }
 int main(void)
 {
-
+    char z[100] = "teststring\n";
+    printf("%s", z);
     //to check stack & heap direction
     int a;
     sub(&a);
@@ -2294,6 +2300,7 @@ int main(void)
         write(stdout, eval(exp, the_global_environment));
 
         printf("\n");
+        print_objects_status();
     }
     //to make compiler happy
     return 0;
