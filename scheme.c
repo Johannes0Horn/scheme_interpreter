@@ -83,8 +83,8 @@ typedef struct schemeobject
     } data;
 } schemeobject;
 //GC FUnktions
-//keeping track of the roots for the mark-and-sweep algorithm. 
-//The root objects are the ones where the mark phase starts. 
+//keeping track of the roots for the mark-and-sweep algorithm.
+//The root objects are the ones where the mark phase starts.
 //These are objects that may not have any other objects pointing to them but should still not be garbage collected
 schemeobject *root_list;
 
@@ -100,28 +100,29 @@ int getCount(schemeobject *head)
 {
     int count = 0;                // Initialize count
     schemeobject *current = head; // Initialize current
-    printf("List count start is at address: %p\n", (void *)current);
-    printf("List count start->next is at address: %p\n", (void *)current->next);
+    //printf("List count start is at address: %p\n", (void *)current);
+    //printf("List count start->next is at address: %p\n", (void *)current->next);
 
     while (current != NULL)
     {
         count++;
         current = current->next;
-        if (count==1498){
+        /* if (count==1498){
                 printf("List count last is at address: %p\n", (void *)current);
 
-        }
+        }*/
     }
     return count;
 }
 void print_list(schemeobject *head)
 {
     schemeobject *current = head;
-
+    int i = 0;
     while (current != NULL)
     {
-        printf("%d\n", current->mark);
+        printf("List item %d adress: %p\n", i, (void *)current);
         current = current->next;
+        i++;
     }
 }
 //print number of free items
@@ -152,6 +153,30 @@ void push_newschemeobject_to_linked_list(schemeobject *head, int mark)
     current->next->next = NULL;
 }
 
+void push_pointer_to_existing_schemeobject_to_root_list(schemeobject *rootobject)
+{
+
+    schemeobject *current = root_list;
+
+    if (root_list == NULL)
+    {
+        root_list = rootobject;
+    }
+
+    else
+    {
+
+        while (current->next != NULL)
+        {
+
+            current = current->next;
+        }
+        /* now we can add a new variable */
+        current->next = rootobject;
+        current->next->next = NULL;
+    }
+}
+
 //GC
 
 //alloc object , later GC
@@ -171,7 +196,7 @@ schemeobject *alloc_object(int use_gc)
         //drop first object from free list:
         free_list = free_list->next;
         //drop next reference? why here already necessary?
-        tempfree->next=NULL;
+        tempfree->next = NULL;
 
         //printf("variable free_list AFTER is at address: %p\n", (void *)free_list);
         //printf("variable tempfree AFTER is at address: %p\n", (void *)tempfree);
@@ -216,13 +241,12 @@ schemeobject *alloc_object(int use_gc)
     exit(1);
 }
 //gc function
-void gc(){
-//markphase:
+void gc()
+{
+    //markphase:
 
-
-
+    //sweepphase:
 }
-
 
 schemeobject *the_empty_list;
 //*****************boolean//
@@ -1206,7 +1230,7 @@ void init(void)
     {
         push_newschemeobject_to_linked_list(head, i);
     }
-    printf("variable head is at address: %p\n", (void *)head);
+    //printf("variable head is at address: %p\n", (void *)head);
 
     //init free_list
     free_list = head;
@@ -1216,14 +1240,25 @@ void init(void)
     //print_list(free_list);
 
     the_empty_list = alloc_object(1);
+    //comparison test only
+    print_list(the_empty_list);
+    //
+    //add to root list
+    push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
+    print_list(root_list);
+
     the_empty_list->type = THE_EMPTY_LIST;
     //true and false which reader returns as singleton
     false = alloc_object(1);
+    push_pointer_to_existing_schemeobject_to_root_list(false);
+
 
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
 
     true = alloc_object(1);
+    push_pointer_to_existing_schemeobject_to_root_list(true);
+
 
     true->type = BOOLEAN;
     true->data.boolean.value = 1;
@@ -1251,11 +1286,15 @@ void init(void)
 
     //i/o
     eof_object = alloc_object(1);
+    push_pointer_to_existing_schemeobject_to_root_list(eof_object);
+
     eof_object->type = EOF_OBJECT;
 
     the_empty_environment = the_empty_list;
 
     the_global_environment = make_environment();
+    push_pointer_to_existing_schemeobject_to_root_list(the_global_environment);
+
 }
 /***************************** READ ******************************/
 
