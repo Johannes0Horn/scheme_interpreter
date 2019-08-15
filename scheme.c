@@ -13,17 +13,17 @@ It´s restructered and Garbage Collection and floats are added.
 //define enum with name "object_type" with only option FIXNUM as choice
 typedef enum
 {
-    THE_EMPTY_LIST,
-    BOOLEAN,
-    SYMBOL,
-    FIXNUM,
-    CHARACTER,
-    STRING,
-    PAIR,
-    PRIMITIVE_PROC,
-    COMPOUND_PROC,
-    INPUT_PORT,
-    OUTPUT_PORT,
+    THE_EMPTY_LIST, 
+    BOOLEAN, 
+    SYMBOL,//linked to value
+    FIXNUM, 
+    CHARACTER, 
+    STRING, //linked to value
+    PAIR, //linked to car and cdr
+    PRIMITIVE_PROC, //linked to function
+    COMPOUND_PROC, //linked to param, body, env
+    INPUT_PORT, //linked to stream
+    OUTPUT_PORT, //linked to stream
     EOF_OBJECT
 } object_type;
 
@@ -64,7 +64,7 @@ typedef struct schemeobject
         } pair;
         struct
         {
-            struct schemeobject *(*fn)(struct schemeobject *arguments);
+            struct schemeobject *(*fn)( struct schemeobject *arguments);
         } primitive_proc;
         struct
         {
@@ -243,7 +243,16 @@ schemeobject *alloc_object(int use_gc)
 //gc function
 void gc()
 {
-    //markphase:
+    //markphase: traverse explicit throug all reachable objects, starting from rootobjects. As second stepgo through stack objects
+    schemeobject *current = root_list;
+    while (current->next != NULL)
+        {
+            //for each root_item
+
+
+
+            current = current->next;
+        }
 
     //sweepphase:
 }
