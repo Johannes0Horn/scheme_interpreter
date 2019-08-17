@@ -8,22 +8,25 @@ It´s restructered and Garbage Collection and floats are added.
 #include <string.h> //string
 #include <ctype.h>  //testing and mapping characters
 
+/* DEBUG VARS*/
+int number_of_marked_objects = 0;
+
 /**************************** MODEL ******************************/
 
 //define enum with name "object_type" with only option FIXNUM as choice
 typedef enum
 {
-    THE_EMPTY_LIST, 
-    BOOLEAN, 
-    SYMBOL,//linked to value
-    FIXNUM, 
-    CHARACTER, 
-    STRING, //linked to value
-    PAIR, //linked to car and cdr
+    THE_EMPTY_LIST,
+    BOOLEAN,
+    SYMBOL, //linked to value
+    FIXNUM,
+    CHARACTER,
+    STRING,         //linked to value
+    PAIR,           //linked to car and cdr
     PRIMITIVE_PROC, //linked to function
-    COMPOUND_PROC, //linked to param, body, env
-    INPUT_PORT, //linked to stream
-    OUTPUT_PORT, //linked to stream
+    COMPOUND_PROC,  //linked to param, body, env
+    INPUT_PORT,     //linked to stream
+    OUTPUT_PORT,    //linked to stream
     EOF_OBJECT
 } object_type;
 
@@ -34,7 +37,10 @@ typedef struct schemeobject
     //union is named data
     int mark;
     struct schemeobject *next;
-    union {
+    struct schemeobject *next_root;
+
+    struct
+    {
         //A struct is a type consisting of a sequence of members whose storage is allocated in an ordered sequence
         //struct is named "fixnum"
         struct
@@ -64,7 +70,7 @@ typedef struct schemeobject
         } pair;
         struct
         {
-            struct schemeobject *(*fn)( struct schemeobject *arguments);
+            struct schemeobject *(*fn)(struct schemeobject *arguments);
         } primitive_proc;
         struct
         {
@@ -82,7 +88,7 @@ typedef struct schemeobject
         } output_port;
     } data;
 } schemeobject;
-//GC FUnktions
+//some GC FUnktions
 //keeping track of the roots for the mark-and-sweep algorithm.
 //The root objects are the ones where the mark phase starts.
 //These are objects that may not have any other objects pointing to them but should still not be garbage collected
@@ -91,9 +97,12 @@ schemeobject *root_list;
 //Let's define a linked list object:
 
 schemeobject *free_list;
-//init active List
+//define active List
 schemeobject *active_list;
-const int number_of_objects = 1500;
+///define root_list where mark steps starts from
+schemeobject *root_list;
+
+const int number_of_objects = 1023;
 //print list
 /* Counts no. of nodes in linked list */
 int getCount(schemeobject *head)
@@ -155,29 +164,157 @@ void push_newschemeobject_to_linked_list(schemeobject *head, int mark)
 
 void push_pointer_to_existing_schemeobject_to_root_list(schemeobject *rootobject)
 {
-
     schemeobject *current = root_list;
-
-    if (root_list == NULL)
+    if (current == NULL)
     {
         root_list = rootobject;
     }
 
     else
     {
-
-        while (current->next != NULL)
+        while (current->next_root != NULL)
         {
-
-            current = current->next;
+            current = current->next_root;
         }
         /* now we can add a new variable */
-        current->next = rootobject;
-        current->next->next = NULL;
+        current->next_root = rootobject;
+        current->next_root->next_root = NULL;
     }
 }
 
-//GC
+schemeobject *the_empty_list;
+//*****************boolean//
+schemeobject * false;
+schemeobject * true;
+//symbol
+schemeobject *symbol_table;
+
+schemeobject *cons(schemeobject *car, schemeobject *cdr);
+schemeobject *car(schemeobject *pair);
+schemeobject *cdr(schemeobject *pair);
+//quote
+schemeobject *quote_symbol;
+//environment
+schemeobject *define_symbol;
+schemeobject *set_symbol;
+schemeobject *ok_symbol;
+schemeobject *the_empty_environment;
+schemeobject *the_global_environment;
+//if
+schemeobject *if_symbol;
+//lambda
+schemeobject *lambda_symbol;
+//begin
+schemeobject *begin_symbol;
+//cond
+schemeobject *cond_symbol;
+schemeobject *else_symbol;
+//let
+schemeobject *let_symbol;
+//and or
+schemeobject *and_symbol;
+schemeobject *or_symbol;
+//i/o
+schemeobject *eof_object;
+
+char is_the_empty_list(schemeobject *obj)
+{
+    return obj == the_empty_list;
+}
+//some gc functions
+void mark_binary_tree(schemeobject *tree_root)
+{
+    schemeobject *tree_root_copy = tree_root;
+    tree_root->mark = 1;
+
+    number_of_marked_objects++;
+    //check oberer "ast" des trees:
+    if (car(tree_root) != NULL)
+    {
+        mark_binary_tree(car(tree_root));
+    }
+    //check unterer "ast" des trees:
+    if (cdr(tree_root) != NULL)
+    {
+        mark_binary_tree(cdr(tree_root));
+    }
+}
+
+//gc function
+void gc()
+{
+    //markphase: traverse explicit through all reachable objects, starting from rootobjects. As second step go through stack objects
+    schemeobject *current = root_list;
+    //assuming global env is only root object
+    while (current != NULL)
+    {
+        schemeobject *currentobject = current;
+
+        //for each root_item
+        //check if item has pointers to other objects and mark ech reachable object (mark=1)
+        mark_binary_tree(currentobject);
+
+        current = current->next_root;
+        printf("number_of_marked_objects %d\n", number_of_marked_objects);
+    }
+
+    //stack objects
+    //-->to be implemented
+
+    //sweepphase:
+    /*In the sweep phase, the garbage collector starts at the top of the active_list
+    and examines each object in that list. Objects that have mark set to 0 are moved to the free_list. 
+    (Symbols and strings also need to have their data.symbol.value field, for example, freed.) 
+    Objects in the active_list that have mark set to 1 have their mark set back to 0 in preparation for the next mark phase.
+    */
+
+    //traverse through active_list
+    current = active_list;
+    int number_of_moved_items = 0;
+
+    //todo: debug segmentation fault  after 371 moved items
+    while (current->next != NULL)
+    {
+        //for each active List item:
+        //check if mark is still 0:
+        if (current->next->mark == 0)
+        {
+            //back from active to free List:
+            //save (current->next) adress:
+            schemeobject *object_to_move = current->next;
+            //drop object_to_move from active list:
+            current->next = current->next->next;
+            //drop next reference? why here already necessary?
+            object_to_move->next = NULL;
+            //move temp to free list:
+            //check if free list is NULL:
+            if (free_list == NULL)
+            {
+                //init free List:
+                free_list = object_to_move;
+            }
+            else
+            { //add to free List:
+
+                schemeobject *currentfree = free_list;
+
+                while (currentfree->next != NULL)
+                {
+                    currentfree = currentfree->next;
+                }
+                //add active item to last item in free list
+                currentfree->next = object_to_move;
+                //print_objects_status();
+
+                currentfree->next->next = NULL;
+            }
+            number_of_moved_items++;
+            printf("number_of_moved_items %d\n", number_of_moved_items);
+        }
+
+        current = current->next;
+    }
+}
 
 //alloc object , later GC
 schemeobject *alloc_object(int use_gc)
@@ -228,73 +365,22 @@ schemeobject *alloc_object(int use_gc)
         //return schemeobject to use
         //printf("%d\n", current->mark);
 
+        //init needed references to Null to avoid 0xbaadfood-error(using not allocated memory on the heap)
+        tempfree->next_root = NULL;
+        tempfree->data.pair.car = NULL;
+        tempfree->data.pair.cdr = NULL;
+
         return tempfree;
     }
     //free list has no object to offer, start GC!
-    /*if (use_gc == 1)
+    if (use_gc == 1)
     {
-        //gc();
+        gc();
         return alloc_object(0);
     }
-    */
-    fprintf(stderr, "out of memory\n");
+
+    fprintf(stderr, "out of memory while allocationg\n");
     exit(1);
-}
-//gc function
-void gc()
-{
-    //markphase: traverse explicit throug all reachable objects, starting from rootobjects. As second stepgo through stack objects
-    schemeobject *current = root_list;
-    while (current->next != NULL)
-        {
-            //for each root_item
-
-
-
-            current = current->next;
-        }
-
-    //sweepphase:
-}
-
-schemeobject *the_empty_list;
-//*****************boolean//
-schemeobject * false;
-schemeobject * true;
-//symbol
-schemeobject *symbol_table;
-
-schemeobject *cons(schemeobject *car, schemeobject *cdr);
-schemeobject *car(schemeobject *pair);
-schemeobject *cdr(schemeobject *pair);
-//quote
-schemeobject *quote_symbol;
-//environment
-schemeobject *define_symbol;
-schemeobject *set_symbol;
-schemeobject *ok_symbol;
-schemeobject *the_empty_environment;
-schemeobject *the_global_environment;
-//if
-schemeobject *if_symbol;
-//lambda
-schemeobject *lambda_symbol;
-//begin
-schemeobject *begin_symbol;
-//cond
-schemeobject *cond_symbol;
-schemeobject *else_symbol;
-//let
-schemeobject *let_symbol;
-//and or
-schemeobject *and_symbol;
-schemeobject *or_symbol;
-//i/o
-schemeobject *eof_object;
-
-char is_the_empty_list(schemeobject *obj)
-{
-    return obj == the_empty_list;
 }
 
 char is_boolean(schemeobject *obj)
@@ -314,10 +400,11 @@ char is_true(schemeobject *obj)
 //symbol
 schemeobject *make_symbol(char *value)
 {
+
     schemeobject *obj;
     schemeobject *element;
 
-    /* search for they symbol in the symbol table */
+    /* search for the symbol in the symbol table */
     element = symbol_table;
     while (!is_the_empty_list(element))
     {
@@ -337,8 +424,9 @@ schemeobject *make_symbol(char *value)
         fprintf(stderr, "out of memory\n");
         exit(1);
     }
-    strcpy(obj->data.symbol.value, value);
+    strcpy(/*dest*/ obj->data.symbol.value, /*source*/ value);
     symbol_table = cons(obj, symbol_table);
+
     return obj;
 }
 
@@ -398,7 +486,7 @@ char is_character(schemeobject *obj)
     return obj->type == CHARACTER;
 }
 
-//PAIR
+//PAIR = make_pair
 schemeobject *cons(schemeobject *car, schemeobject *cdr)
 {
     schemeobject *obj;
@@ -465,8 +553,9 @@ void set_cdr(schemeobject *obj, schemeobject *value)
 #define cddddr(obj) cdr(cdr(cdr(cdr(obj))))
 
 //simple procedures
-schemeobject *make_primitive_proc(
-    schemeobject *(*fn)(struct schemeobject *arguments))
+
+//wants pointer to a funtion which returns a pointer to a scheme object and takes a schemeobject as argument
+schemeobject *make_primitive_proc(schemeobject *(*fn)(schemeobject *arguments)) //deletet "struct" before schemeobject*arguments
 {
     schemeobject *obj;
 
@@ -481,6 +570,7 @@ char is_primitive_proc(schemeobject *obj)
     return obj->type == PRIMITIVE_PROC;
 }
 
+//any arguments given?
 schemeobject *is_null_proc(schemeobject *arguments)
 {
     return is_the_empty_list(car(arguments)) ? true : false;
@@ -1051,8 +1141,9 @@ schemeobject *frame_values(schemeobject *frame)
 void add_binding_to_frame(schemeobject *var, schemeobject *val,
                           schemeobject *frame)
 {
-    set_car(frame, cons(var, car(frame)));
-    set_cdr(frame, cons(val, cdr(frame)));
+
+    set_car(/*object*/ frame, /*value added to object*/ cons(var, car(frame)));
+    set_cdr(/*object*/ frame, cons(val, cdr(frame)));
 }
 
 schemeobject *extend_environment(schemeobject *vars, schemeobject *vals,
@@ -1113,8 +1204,13 @@ void set_variable_value(schemeobject *var, schemeobject *val, schemeobject *env)
     exit(1);
 }
 
-void define_variable(schemeobject *var, schemeobject *val, schemeobject *env)
+void define_variable(/*symbol*/ schemeobject *var, /*proc*/ schemeobject *val, /*env*/ schemeobject *env)
 {
+    //char z[100] = "def_var.";
+    //printf("%s", z); // %s is format specifier
+    //printf("The value of env Next  at start of define_variable: %p\n", (void *)env->next);
+    //printf("The value of env       at start of define_variable: %p\n", (void *)env);
+
     schemeobject *frame;
     schemeobject *vars;
     schemeobject *vals;
@@ -1123,11 +1219,13 @@ void define_variable(schemeobject *var, schemeobject *val, schemeobject *env)
     vars = frame_variables(frame);
     vals = frame_values(frame);
 
+    //scan env for variable
     while (!is_the_empty_list(vars))
     {
         if (var == car(vars))
         {
             set_car(vals, val);
+            //variable already defined
             return;
         }
         vars = cdr(vars);
@@ -1144,6 +1242,7 @@ schemeobject *setup_environment(void)
         the_empty_list,
         the_empty_list,
         the_empty_environment);
+
     return initial_env;
 }
 //eval
@@ -1154,8 +1253,12 @@ void populate_environment(schemeobject *env)
     define_variable(make_symbol(scheme_name),    \
                     make_primitive_proc(c_name), \
                     env);
+    //printf("The value of populate_environment Next before is_null_proc: %p\n", (void *)env->next);
 
+    env->next = NULL; //redundant
     add_procedure("null?", is_null_proc);
+    //printf("The value of populate_environment Next after is_null_proc: %p\n", (void *)env->next);
+    //-->smboly are added to global env as binary tree
     add_procedure("boolean?", is_boolean_proc);
     add_procedure("symbol?", is_symbol_proc);
     add_procedure("integer?", is_integer_proc);
@@ -1219,7 +1322,11 @@ schemeobject *make_environment(void)
     schemeobject *env;
 
     env = setup_environment();
+    //printf("The value of initial_env Next is: %p\n", (void *) env->next);
+
     populate_environment(env);
+    //printf("The value of populate_environment Next is: %p\n", (void *) env->next);
+    //-->populating env changes its next pointers, because they are added
     return env;
 }
 
@@ -1228,7 +1335,7 @@ void init(void)
 {
 
     //GC
-    // create a local variable which points to the first item of the list (called head).
+    // create a local variable which points to the first item of the free list (called head).
     //-->init list of objects
     schemeobject *head = NULL;
     head = malloc(sizeof(schemeobject));
@@ -1237,7 +1344,7 @@ void init(void)
     long i;
     for (i = 1; i < number_of_objects; ++i)
     {
-        push_newschemeobject_to_linked_list(head, i);
+        push_newschemeobject_to_linked_list(head, 0);
     }
     //printf("variable head is at address: %p\n", (void *)head);
 
@@ -1245,32 +1352,36 @@ void init(void)
     free_list = head;
     //init active List
     active_list = NULL;
+
     //printf("%s", "free_List:"); // %s is format specifier
     //print_list(free_list);
 
     the_empty_list = alloc_object(1);
+
     //comparison test only
     print_list(the_empty_list);
     //
-    //add to root list
-    push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
+    //dont add to root list because its aread appended to global env
+    //push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
     print_list(root_list);
 
     the_empty_list->type = THE_EMPTY_LIST;
     //true and false which reader returns as singleton
     false = alloc_object(1);
-    push_pointer_to_existing_schemeobject_to_root_list(false);
-
 
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
+    //dont add to root list because its aread appended to global env
+    //push_pointer_to_existing_schemeobject_to_root_list(false);
 
     true = alloc_object(1);
-    push_pointer_to_existing_schemeobject_to_root_list(true);
-
 
     true->type = BOOLEAN;
     true->data.boolean.value = 1;
+
+    //dont add to root list because its aread appended to global env
+
+    //push_pointer_to_existing_schemeobject_to_root_list(true);
 
     symbol_table = the_empty_list;
     quote_symbol = make_symbol("quote");
@@ -1295,15 +1406,17 @@ void init(void)
 
     //i/o
     eof_object = alloc_object(1);
-    push_pointer_to_existing_schemeobject_to_root_list(eof_object);
+    //dont add to root list because its aread appended to global env
+
+    //push_pointer_to_existing_schemeobject_to_root_list(eof_object);
 
     eof_object->type = EOF_OBJECT;
 
     the_empty_environment = the_empty_list;
 
     the_global_environment = make_environment();
-    push_pointer_to_existing_schemeobject_to_root_list(the_global_environment);
 
+    push_pointer_to_existing_schemeobject_to_root_list(the_global_environment);
 }
 /***************************** READ ******************************/
 
@@ -2320,7 +2433,7 @@ void sub(int *a)
         printf("Stack grows down.\nHeap grows up.\n");
     }
 }
-int main(void)
+int main(int argc, char **argv)
 {
     char z[100] = "teststring\n";
     printf("%s", z);
