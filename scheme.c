@@ -267,23 +267,63 @@ void gc()
     (Symbols and strings also need to have their data.symbol.value field, for example, freed.) 
     Objects in the active_list that have mark set to 1 have their mark set back to 0 in preparation for the next mark phase.
     */
+    //return if active list is empty
+    if (active_list == NULL)
+    {
+        return;
+    }
 
-    //traverse through active_list
-    current = active_list;
     int number_of_moved_items = 0;
+    //take take of first item: look if ifrst item in active list is marked
+    while (active_list->mark == 1)
+    {
+        //back from active to free List:
+        //save (currentactive) adress:
+        schemeobject *object_to_move = active_list;
+        //drop object_to_move from active list:
+        active_list = active_list->next;
+        //drop next reference? why here already necessary?
+        object_to_move->next = NULL;
+        //move temp to free list:
+        //check if free list is NULL:
+        if (free_list == NULL)
+        {
+            //init free List:
+            free_list = object_to_move;
+        }
+        else
+        {
+            //add to free List:
 
-    //todo: debug segmentation fault  after 371 moved items
-    while (current->next != NULL)
+            schemeobject *currentfree = free_list;
+
+            while (currentfree->next != NULL)
+            {
+                currentfree = currentfree->next;
+            }
+            //add active item to last item in free list
+            currentfree->next = object_to_move;
+            //print_objects_status();
+
+            currentfree->next->next = NULL;
+        }
+        number_of_moved_items++;
+    }
+
+    //now take care of other list items, we are sure active_list->mark is 0
+    //traverse through active_list
+    schemeobject *currentactive = active_list;
+    while (currentactive != NULL && currentactive->next != NULL)
     {
         //for each active List item:
-        //check if mark is still 0:
-        if (current->next->mark == 0)
+        //check if mark is still 0, after mark phase:
+        if (currentactive->next->mark == 0)
         {
             //back from active to free List:
-            //save (current->next) adress:
-            schemeobject *object_to_move = current->next;
+            //save (currentactive->next) adress:
+            schemeobject *object_to_move = currentactive->next;
             //drop object_to_move from active list:
-            current->next = current->next->next;
+            currentactive->next = currentactive->next->next;
             //drop next reference? why here already necessary?
             object_to_move->next = NULL;
             //move temp to free list:
@@ -308,12 +348,13 @@ void gc()
 
                 currentfree->next->next = NULL;
             }
+            //number_of_moved_items++;
             number_of_moved_items++;
-            printf("number_of_moved_items %d\n", number_of_moved_items);
         }
 
-        current = current->next;
+        currentactive = currentactive->next;
     }
+    printf("number_of_moved_items %d\n", number_of_moved_items);
 }
 
 //alloc object , later GC
