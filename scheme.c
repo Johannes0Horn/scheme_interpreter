@@ -88,11 +88,11 @@ typedef struct schemeobject
         } output_port;
     } data;
 } schemeobject;
+
 //some GC FUnktions
 //keeping track of the roots for the mark-and-sweep algorithm.
 //The root objects are the ones where the mark phase starts.
 //These are objects that may not have any other objects pointing to them but should still not be garbage collected
-schemeobject *root_list;
 
 //Let's define a linked list object:
 
@@ -102,7 +102,12 @@ schemeobject *active_list;
 ///define root_list where mark steps starts from
 schemeobject *root_list;
 
-const int number_of_objects = 1023;
+const int number_of_objects = 1023; //1023 to test gc
+
+/*function declaration*/
+char is_the_empty_list(schemeobject *obj);
+schemeobject *cdr(schemeobject *pair);
+
 //print list
 /* Counts no. of nodes in linked list */
 int getCount(schemeobject *head)
@@ -122,6 +127,30 @@ int getCount(schemeobject *head)
         }*/
     }
     return count;
+}
+int getRootCount()
+{
+    int count = 0;                     // Initialize count
+    schemeobject *current = root_list; // Initialize current
+    //printf("List count start is at address: %p\n", (void *)current);
+    //printf("List count start->next is at address: %p\n", (void *)current->next);
+
+    while (current != NULL)
+    {
+        count++;
+        current = current->next_root;
+    }
+    return count;
+}
+int getCountCdr(schemeobject *head)
+{
+    int countcdr = 0;
+    while (!is_the_empty_list(head))
+    {
+        countcdr++;
+        head = cdr(head);
+    };
+    return countcdr;
 }
 void print_list(schemeobject *head)
 {
@@ -165,13 +194,13 @@ void push_newschemeobject_to_linked_list(schemeobject *head, int mark)
 void push_pointer_to_existing_schemeobject_to_root_list(schemeobject *rootobject)
 {
     schemeobject *current = root_list;
-    if (current == NULL)
+    if (root_list == NULL)
     {
         root_list = rootobject;
     }
 
     else
-    {
+    { //goto end of root list
         while (current->next_root != NULL)
         {
             current = current->next_root;
@@ -187,6 +216,7 @@ schemeobject *the_empty_list;
 schemeobject * false;
 schemeobject * true;
 //symbol
+schemeobject *old_symbol_table;
 schemeobject *symbol_table;
 
 schemeobject *cons(schemeobject *car, schemeobject *cdr);
@@ -222,38 +252,58 @@ char is_the_empty_list(schemeobject *obj)
     return obj == the_empty_list;
 }
 //some gc functions
+int alreadymarked = 0;
 void mark_binary_tree(schemeobject *tree_root)
 {
-    schemeobject *tree_root_copy = tree_root;
+    //fprintf(stderr, "marking\n");
+
+    if (tree_root->mark == 1)
+    {
+        alreadymarked++;
+    }
     tree_root->mark = 1;
 
     number_of_marked_objects++;
     //check oberer "ast" des trees:
     if (car(tree_root) != NULL)
     {
+        //fprintf(stderr, "mark car\n");
         mark_binary_tree(car(tree_root));
     }
     //check unterer "ast" des trees:
     if (cdr(tree_root) != NULL)
     {
+        //fprintf(stderr, "mark cdr\n");
         mark_binary_tree(cdr(tree_root));
     }
 }
-
+void setActiveListMarksZero()
+{
+    schemeobject *currentactive = active_list;
+    while (currentactive != NULL)
+    {
+        currentactive->mark = 0;
+        currentactive = currentactive->next;
+    }
+}
 //gc function
 void gc()
 {
-    //markphase: traverse explicit through all reachable objects, starting from rootobjects. As second step go through stack objects
+    //markphase: traverse explicit through all reachable objects, starting from rootobjects.
+    //As second step go through stack objects
     schemeobject *current = root_list;
+    number_of_marked_objects = 0;
+    print_list(root_list);
+
     //assuming global env is only root object
     while (current != NULL)
     {
         schemeobject *currentobject = current;
 
         //for each root_item
-        //check if item has pointers to other objects and mark ech reachable object (mark=1)
+        //check if item has pointers to other objects and mark each reachable object (mark=1)
         mark_binary_tree(currentobject);
-
+        printf("number_of_already markred %d\n", alreadymarked);
         current = current->next_root;
         printf("number_of_marked_objects %d\n", number_of_marked_objects);
     }
@@ -274,8 +324,8 @@ void gc()
     }
 
     int number_of_moved_items = 0;
-    //take take of first item: look if ifrst item in active list is marked
-    while (active_list->mark == 1)
+    //take take of first item: look if first item in active list is not marked
+    while (active_list->mark == 0)
     {
         //back from active to free List:
         //save (currentactive) adress:
@@ -284,6 +334,8 @@ void gc()
         active_list = active_list->next;
         //drop next reference? why here already necessary?
         object_to_move->next = NULL;
+        //make sure mark is zero
+        object_to_move->mark = 0;
         //move temp to free list:
         //check if free list is NULL:
         if (free_list == NULL)
@@ -308,6 +360,8 @@ void gc()
             currentfree->next->next = NULL;
         }
         number_of_moved_items++;
+        //fprintf(stderr, "moved first item of active\n");
+        //print_objects_status();
     }
 
     //now take care of other list items, we are sure active_list->mark is 0
@@ -326,6 +380,8 @@ void gc()
             currentactive->next = currentactive->next->next;
             //drop next reference? why here already necessary?
             object_to_move->next = NULL;
+            //make sure mrk is zero
+            object_to_move->mark = 0;
             //move temp to free list:
             //check if free list is NULL:
             if (free_list == NULL)
@@ -348,12 +404,14 @@ void gc()
 
                 currentfree->next->next = NULL;
             }
-            //number_of_moved_items++;
             number_of_moved_items++;
+            //fprintf(stderr, "moved one middle item of active\n");
+            //print_objects_status();
         }
 
         currentactive = currentactive->next;
     }
+    setActiveListMarksZero();
     printf("number_of_moved_items %d\n", number_of_moved_items);
 }
 
@@ -416,7 +474,14 @@ schemeobject *alloc_object(int use_gc)
     //free list has no object to offer, start GC!
     if (use_gc == 1)
     {
+        //printf("%s%d%s", "symbol_table_length: ", getCountCdr(symbol_table), "\n");
+
+        fprintf(stderr, "starting gc\n");
+
         gc();
+        fprintf(stderr, "GC DONE\n");
+        //printf("%s%d%s", "symbol_table_length: ", getCountCdr(symbol_table), "\n");
+
         return alloc_object(0);
     }
 
@@ -438,19 +503,68 @@ char is_true(schemeobject *obj)
 {
     return !is_false(obj);
 }
+
+void updateRootList(schemeobject *old_symbol_table)
+{
+    schemeobject *currentRoot = root_list;
+    //case rootList is null
+    if (root_list == NULL)
+    {
+        root_list = symbol_table;
+    }
+    //case root list has length 1
+    else if (root_list->next_root == NULL)
+    {
+        if (root_list = old_symbol_table)
+        {
+            root_list = symbol_table;
+        }
+        else
+        {
+            root_list->next_root = symbol_table;
+        }
+    }
+    else
+    { //case old_symbol_table is first item
+        if (root_list == old_symbol_table)
+        {
+            schemeobject *tempEnd = root_list->next_root;
+            root_list = symbol_table;
+            root_list->next_root = tempEnd;
+        }
+        else
+        {
+            //scan for old_symbol_table
+            while (currentRoot->next_root != old_symbol_table)
+            {
+                currentRoot = currentRoot->next_root;
+            }
+            //we assume now: currentRoot->next_root = old_symbol_table
+            schemeobject *temp_end = currentRoot->next_root->next_root;
+            currentRoot->next_root = symbol_table;
+            currentRoot->next_root->next_root = temp_end;
+        }
+    }
+}
 //symbol
+int number_of_made_symbols = 0;
+
 schemeobject *make_symbol(char *value)
 {
+    //printf("%s%d%s", "symbol_table_length: ", getCountCdr(symbol_table), "\n");
 
     schemeobject *obj;
     schemeobject *element;
-
     /* search for the symbol in the symbol table */
     element = symbol_table;
     while (!is_the_empty_list(element))
     {
+        //printf("%s", "!is_the_empty_list: ");
+
         if (strcmp(car(element)->data.symbol.value, value) == 0)
         {
+            //printf("%s", "end of make symbol- old symbol: \n");
+
             return car(element);
         }
         element = cdr(element);
@@ -466,8 +580,14 @@ schemeobject *make_symbol(char *value)
         exit(1);
     }
     strcpy(/*dest*/ obj->data.symbol.value, /*source*/ value);
+    old_symbol_table = symbol_table;
     symbol_table = cons(obj, symbol_table);
+    updateRootList(old_symbol_table);
+    //printf("%s", "end of make symbol- new symbol: ");
 
+    number_of_made_symbols++;
+    //printf("%s", "number_of_made_symbols: ");
+    //printf("%d\n", number_of_made_symbols);
     return obj;
 }
 
@@ -1190,6 +1310,7 @@ void add_binding_to_frame(schemeobject *var, schemeobject *val,
 schemeobject *extend_environment(schemeobject *vars, schemeobject *vals,
                                  schemeobject *base_env)
 {
+    //fprintf(stderr, "extend_environment\n");
     return cons(make_frame(vars, vals), base_env);
 }
 
@@ -1296,10 +1417,10 @@ void populate_environment(schemeobject *env)
                     env);
     //printf("The value of populate_environment Next before is_null_proc: %p\n", (void *)env->next);
 
-    env->next = NULL; //redundant
+    //env->next = NULL; //redundant
     add_procedure("null?", is_null_proc);
     //printf("The value of populate_environment Next after is_null_proc: %p\n", (void *)env->next);
-    //-->smboly are added to global env as binary tree
+    //-->symbols are added to global env as binary tree
     add_procedure("boolean?", is_boolean_proc);
     add_procedure("symbol?", is_symbol_proc);
     add_procedure("integer?", is_integer_proc);
@@ -1399,12 +1520,8 @@ void init(void)
 
     the_empty_list = alloc_object(1);
 
-    //comparison test only
-    print_list(the_empty_list);
-    //
-    //dont add to root list because its aread appended to global env
-    //push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
-    print_list(root_list);
+    //add empty list to root list
+    push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
 
     the_empty_list->type = THE_EMPTY_LIST;
     //true and false which reader returns as singleton
@@ -1412,22 +1529,26 @@ void init(void)
 
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
-    //dont add to root list because its aread appended to global env
-    //push_pointer_to_existing_schemeobject_to_root_list(false);
+    // add false to root list
+    push_pointer_to_existing_schemeobject_to_root_list(false);
 
     true = alloc_object(1);
 
     true->type = BOOLEAN;
     true->data.boolean.value = 1;
 
-    //dont add to root list because its aread appended to global env
-
-    //push_pointer_to_existing_schemeobject_to_root_list(true);
+    // add true to root list
+    push_pointer_to_existing_schemeobject_to_root_list(true);
 
     symbol_table = the_empty_list;
+    push_pointer_to_existing_schemeobject_to_root_list(symbol_table);
+
     quote_symbol = make_symbol("quote");
+
     //environment
     define_symbol = make_symbol("define");
+    //symbol table = empty list
+    //refresh rootlist after each make symbol
     set_symbol = make_symbol("set!");
     ok_symbol = make_symbol("ok");
     //if
@@ -1447,9 +1568,8 @@ void init(void)
 
     //i/o
     eof_object = alloc_object(1);
-    //dont add to root list because its aread appended to global env
-
-    //push_pointer_to_existing_schemeobject_to_root_list(eof_object);
+    //add to root list
+    push_pointer_to_existing_schemeobject_to_root_list(eof_object);
 
     eof_object->type = EOF_OBJECT;
 
@@ -1458,6 +1578,8 @@ void init(void)
     the_global_environment = make_environment();
 
     push_pointer_to_existing_schemeobject_to_root_list(the_global_environment);
+
+    fprintf(stderr, "getRootCount: %d\n", getRootCount());
 }
 /***************************** READ ******************************/
 
@@ -2326,6 +2448,7 @@ tailcall:
         }
         else if (is_compound_proc(procedure))
         {
+            fprintf(stderr, "is_compound_proc\n");
             env = extend_environment(
                 procedure->data.compound_proc.parameters,
                 arguments,
