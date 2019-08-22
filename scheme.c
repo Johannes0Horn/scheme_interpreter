@@ -2,6 +2,7 @@
 This Scheme Interprter is heavily inspired by Peter Michaux Scheme Interpreter:
 https://github.com/petermichaux/bootstrap-scheme/tree/master
 It´s restructered and Garbage Collection and floats are added.
+-->floats still remain to be added, Garbage Collector is not bug free yet.
 */
 #include <stdlib.h> // standard
 #include <stdio.h>  //input output
@@ -20,6 +21,7 @@ typedef enum
     BOOLEAN,
     SYMBOL, //linked to value
     FIXNUM,
+    FLOATNUM,//not implemented yet
     CHARACTER,
     STRING,         //linked to value
     PAIR,           //linked to car and cdr
@@ -42,7 +44,6 @@ typedef struct schemeobject
     struct
     {
         //A struct is a type consisting of a sequence of members whose storage is allocated in an ordered sequence
-        //struct is named "fixnum"
         struct
         {
             char value;
@@ -55,6 +56,10 @@ typedef struct schemeobject
         {
             long value;
         } fixnum;
+        struct
+        {
+            long value;
+        } floatnum;
         struct
         {
             char value;
@@ -102,7 +107,7 @@ schemeobject *active_list;
 ///define root_list where mark steps starts from
 schemeobject *root_list;
 
-const int number_of_objects = 1023; //1023 to test gc
+const int number_of_objects = 1040; //1023 to test gc
 
 /*function declaration*/
 char is_the_empty_list(schemeobject *obj);
@@ -152,7 +157,7 @@ int getCountCdr(schemeobject *head)
     };
     return countcdr;
 }
-void print_list(schemeobject *head)
+void print_next_list(schemeobject *head)
 {
     schemeobject *current = head;
     int i = 0;
@@ -252,7 +257,7 @@ char is_the_empty_list(schemeobject *obj)
     return obj == the_empty_list;
 }
 //some gc functions
-int alreadymarked = 0;
+int alreadymarked;
 void mark_binary_tree(schemeobject *tree_root)
 {
     //fprintf(stderr, "marking\n");
@@ -293,7 +298,6 @@ void gc()
     //As second step go through stack objects
     schemeobject *current = root_list;
     number_of_marked_objects = 0;
-    print_list(root_list);
 
     //assuming global env is only root object
     while (current != NULL)
@@ -302,11 +306,13 @@ void gc()
 
         //for each root_item
         //check if item has pointers to other objects and mark each reachable object (mark=1)
+        alreadymarked = 0;
         mark_binary_tree(currentobject);
-        printf("number_of_already markred %d\n", alreadymarked);
+        //printf("number_of_already markred %d\n", alreadymarked);
         current = current->next_root;
-        printf("number_of_marked_objects %d\n", number_of_marked_objects);
+        //printf("number_of_marked_objects %d\n", number_of_marked_objects);
     }
+    printf("number_of_marked_objects %d\n", number_of_marked_objects);
 
     //stack objects
     //-->to be implemented
@@ -1516,12 +1522,9 @@ void init(void)
     active_list = NULL;
 
     //printf("%s", "free_List:"); // %s is format specifier
-    //print_list(free_list);
+    //print_next_list(free_list);
 
     the_empty_list = alloc_object(1);
-
-    //add empty list to root list
-    push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
 
     the_empty_list->type = THE_EMPTY_LIST;
     //true and false which reader returns as singleton
@@ -1529,6 +1532,7 @@ void init(void)
 
     false->type = BOOLEAN;
     false->data.boolean.value = 0;
+
     // add false to root list
     push_pointer_to_existing_schemeobject_to_root_list(false);
 
@@ -1568,12 +1572,16 @@ void init(void)
 
     //i/o
     eof_object = alloc_object(1);
+
     //add to root list
     push_pointer_to_existing_schemeobject_to_root_list(eof_object);
 
     eof_object->type = EOF_OBJECT;
 
     the_empty_environment = the_empty_list;
+
+    //add empty list to root list only here because now its not equal to symbol_table anymore
+    push_pointer_to_existing_schemeobject_to_root_list(the_empty_list);
 
     the_global_environment = make_environment();
 
@@ -1749,6 +1757,7 @@ schemeobject *read(FILE *in)
     eat_whitespace(in);
     //get next char of input str
     c = getc(in);
+
     //read boolean or char
     if (c == '#')
     {
@@ -2630,3 +2639,64 @@ int main(int argc, char **argv)
     //to make compiler happy
     return 0;
 }
+
+
+/**TESTS*///
+
+/*
+> #t
+#t
+> -123
+-123
+> #\c
+#\c
+> "adsf"
+"asdf"
+> (quote ())
+()
+> (quote (0 . 1))
+(0 . 1)
+> (quote (0 1 2 3))
+(0 1 2 3)
+> (quote asdf)
+asdf
+> (define a 1)
+ok
+> a
+1
+> (set! a 2)
+ok
+> a
+2
+> (if #t 1 2)
+1
+> (+ 1 2 3)
+6
+> +
+#<procedure>
+> ((lamba (x) x) 1)
+1
+> (define (add x y) (+ x y))
+ok
+> (add 1 2)
+3
+> add
+#<procedure>
+> (define c ((lambda (x) (lambda () x)) 3))
+ok
+> (c)
+3
+> (begin 1 2)
+2
+> (cond (#f          1)
+        ((eq? #t #t) 2)
+        (else        3))
+2
+> (let ((x (+ 1 1))
+        (y (- 5 2)))
+    (+ x y))
+5
+> ^C
+$
+
+*/
