@@ -7,7 +7,7 @@ It´s restructered and Garbage Collection and floats are added.
 #include <stdlib.h> // standard
 #include <stdio.h>  //input output
 #include <string.h> //string
-#include <ctype.h>  //testing and mapping characters
+#include <ctype.h>  //testing and mapping characterss
 
 /* DEBUG VARS*/
 int number_of_marked_objects = 0;
