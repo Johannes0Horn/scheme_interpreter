@@ -1,5 +1,5 @@
 /*
-This Scheme Interprter is based on Peter Michaux Scheme Interpreter:
+This Scheme Interprter borrows Code from  Peter Michaux Scheme Interpreter:
 https://github.com/petermichaux/bootstrap-scheme/tree/master
 -->floats still remain to be added, Garbage Collector is not bug free yet.
 */
@@ -1146,10 +1146,10 @@ void add_binding_to_frame(schemeobject *var, schemeobject *val,
     set_cdr(/*object*/ frame, cons(val, cdr(frame)));
 }
 
-schemeobject *extend_environment(schemeobject *vars, schemeobject *vals,
+schemeobject *init_environment(schemeobject *vars, schemeobject *vals,
                                  schemeobject *base_env)
 {
-    //fprintf(stderr, "extend_environment\n");
+    //fprintf(stderr, "init_environment\n");
     return cons(make_frame(vars, vals), base_env);
 }
 
@@ -1239,7 +1239,7 @@ schemeobject *setup_environment(void)
 {
     schemeobject *initial_env;
 
-    initial_env = extend_environment(
+    initial_env = init_environment(
         the_empty_list,
         the_empty_list,
         the_empty_environment);
@@ -1256,7 +1256,6 @@ void populate_environment(schemeobject *env)
                     env);
     //printf("The value of populate_environment Next before is_null_proc: %p\n", (void *)env->next);
 
-    //env->next = NULL; //redundant
     add_procedure("null?", is_null_proc);
     //printf("The value of populate_environment Next after is_null_proc: %p\n", (void *)env->next);
     //-->symbols are added to global env as binary tree
@@ -2145,7 +2144,7 @@ schemeobject *eval(schemeobject *exp, schemeobject *env)
     schemeobject *procedure;
     schemeobject *arguments;
     schemeobject *result;
-
+//recursive go through tailcalls
 tailcall:
     if (is_self_evaluating(exp))
     {
@@ -2266,11 +2265,13 @@ tailcall:
         else if (is_compound_proc(procedure))
         {
             //fprintf(stderr, "is_compound_proc\n");
-            env = extend_environment(
+            env = init_environment(
                 procedure->data.compound_proc.parameters,
                 arguments,
                 procedure->data.compound_proc.env);
             exp = make_begin(procedure->data.compound_proc.body);
+            //goto tailcall: expression now is  sliced through,
+            //own small env
             goto tailcall;
         }
         else
