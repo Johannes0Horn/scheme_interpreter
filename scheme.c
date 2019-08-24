@@ -1,8 +1,51 @@
 /*
-This Scheme Interprter is heavily inspired by Peter Michaux Scheme Interpreter:
+This Scheme Interprter is based on Peter Michaux Scheme Interpreter:
 https://github.com/petermichaux/bootstrap-scheme/tree/master
-It´s restructered and Garbage Collection and floats are added.
 -->floats still remain to be added, Garbage Collector is not bug free yet.
+*/
+
+/**Features*/ //
+//Automatic Garbage Collector --> no totally bug free yet
+/*
+> #t
+#t
+> 1
+1
+> #\c
+#\c
+> "aaaaa"
+"aaaaa"
+> (quote (0 . 1))
+(0 . 1)
+> (define a 3)
+ok
+> a
+3
+> (set! a 1)
+ok
+> a
+1
+> (if #t 0 1)
+0
+> (+ 1 2 3)
+6
+> ((lambda (x y) (+ x y))
+   1 2)
+3
+> (define (mul x y) (* x y))
+ok
+> (mul 2 3)
+6
+> (begin 1 2)
+2
+> (cond (#f          1)
+        ((eq? #t #t) 2)
+        (else        3))
+2
+> (let ((x (+ 1 1))
+        (y (- 5 2)))
+    (+ x y))
+5
 */
 #include <stdlib.h> // standard
 #include <stdio.h>  //input output
@@ -21,15 +64,12 @@ typedef enum
     BOOLEAN,
     SYMBOL, //linked to value
     FIXNUM,
-    FLOATNUM,//not implemented yet
+    FLOATNUM, //not implemented yet
     CHARACTER,
     STRING,         //linked to value
     PAIR,           //linked to car and cdr
     PRIMITIVE_PROC, //linked to function
     COMPOUND_PROC,  //linked to param, body, env
-    INPUT_PORT,     //linked to stream
-    OUTPUT_PORT,    //linked to stream
-    EOF_OBJECT
 } object_type;
 
 typedef struct schemeobject
@@ -249,8 +289,6 @@ schemeobject *let_symbol;
 //and or
 schemeobject *and_symbol;
 schemeobject *or_symbol;
-//i/o
-schemeobject *eof_object;
 
 char is_the_empty_list(schemeobject *obj)
 {
@@ -291,7 +329,7 @@ void setActiveListMarksZero()
         currentactive = currentactive->next;
     }
 }
-//gc function
+//gc function,
 void gc()
 {
     //markphase: traverse explicit through all reachable objects, starting from rootobjects.
@@ -299,7 +337,7 @@ void gc()
     schemeobject *current = root_list;
     number_of_marked_objects = 0;
 
-    //assuming global env is only root object
+    //assuming there are 5 root objects including global_env and symbol_table
     while (current != NULL)
     {
         schemeobject *currentobject = current;
@@ -617,7 +655,7 @@ char is_fixnum(schemeobject *obj)
     return obj->type == FIXNUM;
 }
 
-schemeobject *make_character(char value)
+schemeobject *make_char(char value)
 {
     schemeobject *obj;
 
@@ -627,7 +665,7 @@ schemeobject *make_character(char value)
     return obj;
 }
 
-schemeobject *make_string(char *value)
+schemeobject *make_str(char *value)
 {
     schemeobject *obj;
 
@@ -643,7 +681,7 @@ schemeobject *make_string(char *value)
     return obj;
 }
 
-char is_string(schemeobject *obj)
+char is_str(schemeobject *obj)
 {
     return obj->type == STRING;
 }
@@ -722,7 +760,7 @@ void set_cdr(schemeobject *obj, schemeobject *value)
 //simple procedures
 
 //wants pointer to a funtion which returns a pointer to a scheme object and takes a schemeobject as argument
-schemeobject *make_primitive_proc(schemeobject *(*fn)(schemeobject *arguments)) //deletet "struct" before schemeobject*arguments
+schemeobject *make_primitive_proc(schemeobject *(*fn)(schemeobject *arguments))
 {
     schemeobject *obj;
 
@@ -737,7 +775,6 @@ char is_primitive_proc(schemeobject *obj)
     return obj->type == PRIMITIVE_PROC;
 }
 
-//any arguments given?
 schemeobject *is_null_proc(schemeobject *arguments)
 {
     return is_the_empty_list(car(arguments)) ? true : false;
@@ -765,7 +802,7 @@ schemeobject *is_char_proc(schemeobject *arguments)
 
 schemeobject *is_string_proc(schemeobject *arguments)
 {
-    return is_string(car(arguments)) ? true : false;
+    return is_str(car(arguments)) ? true : false;
 }
 
 schemeobject *is_pair_proc(schemeobject *arguments)
@@ -793,7 +830,7 @@ schemeobject *char_to_integer_proc(schemeobject *arguments)
 
 schemeobject *integer_to_char_proc(schemeobject *arguments)
 {
-    return make_character((car(arguments))->data.fixnum.value);
+    return make_char((car(arguments))->data.fixnum.value);
 }
 
 schemeobject *number_to_string_proc(schemeobject *arguments)
@@ -801,7 +838,7 @@ schemeobject *number_to_string_proc(schemeobject *arguments)
     char buffer[100];
 
     sprintf(buffer, "%ld", (car(arguments))->data.fixnum.value);
-    return make_string(buffer);
+    return make_str(buffer);
 }
 
 schemeobject *string_to_number_proc(schemeobject *arguments)
@@ -811,7 +848,7 @@ schemeobject *string_to_number_proc(schemeobject *arguments)
 
 schemeobject *symbol_to_string_proc(schemeobject *arguments)
 {
-    return make_string((car(arguments))->data.symbol.value);
+    return make_str((car(arguments))->data.symbol.value);
 }
 
 schemeobject *string_to_symbol_proc(schemeobject *arguments)
@@ -1027,32 +1064,12 @@ schemeobject *eval_proc(schemeobject *arguments)
                     "primitive procedure should not execute.\n");
     exit(1);
 }
+
 //i/o
 schemeobject *read(FILE *in);
 schemeobject *eval(schemeobject *exp, schemeobject *env);
 
-schemeobject *load_proc(schemeobject *arguments)
-{
-    char *filename;
-    FILE *in;
-    schemeobject *exp;
-    schemeobject *result;
-
-    filename = car(arguments)->data.string.value;
-    in = fopen(filename, "r");
-    if (in == NULL)
-    {
-        fprintf(stderr, "could not load file \"%s\"", filename);
-        exit(1);
-    }
-    while ((exp = read(in)) != NULL)
-    {
-        result = eval(exp, the_global_environment);
-    }
-    fclose(in);
-    return result;
-}
-
+//to load scm library
 schemeobject *load_proc_from_str(char *filename)
 {
     FILE *in;
@@ -1073,158 +1090,9 @@ schemeobject *load_proc_from_str(char *filename)
     return result;
 }
 
-schemeobject *make_input_port(FILE *in);
-
-schemeobject *open_input_port_proc(schemeobject *arguments)
-{
-    char *filename;
-    FILE *in;
-
-    filename = car(arguments)->data.string.value;
-    in = fopen(filename, "r");
-    if (in == NULL)
-    {
-        fprintf(stderr, "could not open file \"%s\"\n", filename);
-        exit(1);
-    }
-    return make_input_port(in);
-}
-
-schemeobject *close_input_port_proc(schemeobject *arguments)
-{
-    int result;
-
-    result = fclose(car(arguments)->data.input_port.stream);
-    if (result == EOF)
-    {
-        fprintf(stderr, "could not close input port\n");
-        exit(1);
-    }
-    return ok_symbol;
-}
-
-char is_input_port(schemeobject *obj);
-
-schemeobject *is_input_port_proc(schemeobject *arguments)
-{
-    return is_input_port(car(arguments)) ? true : false;
-}
-
-schemeobject *read_proc(schemeobject *arguments)
-{
-    FILE *in;
-    schemeobject *result;
-
-    in = is_the_empty_list(arguments) ? stdin : car(arguments)->data.input_port.stream;
-    result = read(in);
-    return (result == NULL) ? eof_object : result;
-}
-
-schemeobject *read_char_proc(schemeobject *arguments)
-{
-    FILE *in;
-    int result;
-
-    in = is_the_empty_list(arguments) ? stdin : car(arguments)->data.input_port.stream;
-    result = getc(in);
-    return (result == EOF) ? eof_object : make_character(result);
-}
-
 int peek(FILE *in);
 
-schemeobject *peek_char_proc(schemeobject *arguments)
-{
-    FILE *in;
-    int result;
-
-    in = is_the_empty_list(arguments) ? stdin : car(arguments)->data.input_port.stream;
-    result = peek(in);
-    return (result == EOF) ? eof_object : make_character(result);
-}
-
-char is_eof_object(schemeobject *obj);
-
-schemeobject *is_eof_object_proc(schemeobject *arguments)
-{
-    return is_eof_object(car(arguments)) ? true : false;
-}
-
-schemeobject *make_output_port(FILE *in);
-
-schemeobject *open_output_port_proc(schemeobject *arguments)
-{
-    char *filename;
-    FILE *out;
-
-    filename = car(arguments)->data.string.value;
-    out = fopen(filename, "w");
-    if (out == NULL)
-    {
-        fprintf(stderr, "could not open file \"%s\"\n", filename);
-        exit(1);
-    }
-    return make_output_port(out);
-}
-
-schemeobject *close_output_port_proc(schemeobject *arguments)
-{
-    int result;
-
-    result = fclose(car(arguments)->data.output_port.stream);
-    if (result == EOF)
-    {
-        fprintf(stderr, "could not close output port\n");
-        exit(1);
-    }
-    return ok_symbol;
-}
-
-char is_output_port(schemeobject *obj);
-
-schemeobject *is_output_port_proc(schemeobject *arguments)
-{
-    return is_output_port(car(arguments)) ? true : false;
-}
-
-schemeobject *write_char_proc(schemeobject *arguments)
-{
-    schemeobject *character;
-    FILE *out;
-
-    character = car(arguments);
-    arguments = cdr(arguments);
-    out = is_the_empty_list(arguments) ? stdout : car(arguments)->data.output_port.stream;
-    putc(character->data.character.value, out);
-    fflush(out);
-    return ok_symbol;
-}
-
 void write(FILE *out, schemeobject *obj);
-
-schemeobject *write_proc(schemeobject *arguments)
-{
-    schemeobject *exp;
-    FILE *out;
-
-    exp = car(arguments);
-    arguments = cdr(arguments);
-    out = is_the_empty_list(arguments) ? stdout : car(arguments)->data.output_port.stream;
-    write(out, exp);
-    fflush(out);
-    return ok_symbol;
-}
-
-schemeobject *error_proc(schemeobject *arguments)
-{
-    while (!is_the_empty_list(arguments))
-    {
-        write(stderr, car(arguments));
-        fprintf(stderr, " ");
-        arguments = cdr(arguments);
-    };
-    printf("\nexiting\n");
-    exit(1);
-}
 
 schemeobject *make_compound_proc(schemeobject *parameters, schemeobject *body,
                                  schemeobject *env)
@@ -1242,41 +1110,6 @@ schemeobject *make_compound_proc(schemeobject *parameters, schemeobject *body,
 char is_compound_proc(schemeobject *obj)
 {
     return obj->type == COMPOUND_PROC;
-}
-//i/o
-schemeobject *make_input_port(FILE *stream)
-{
-    schemeobject *obj;
-
-    obj = alloc_object(1);
-    obj->type = INPUT_PORT;
-    obj->data.input_port.stream = stream;
-    return obj;
-}
-
-char is_input_port(schemeobject *obj)
-{
-    return obj->type == INPUT_PORT;
-}
-
-schemeobject *make_output_port(FILE *stream)
-{
-    schemeobject *obj;
-
-    obj = alloc_object(1);
-    obj->type = OUTPUT_PORT;
-    obj->data.output_port.stream = stream;
-    return obj;
-}
-
-char is_output_port(schemeobject *obj)
-{
-    return obj->type == OUTPUT_PORT;
-}
-
-char is_eof_object(schemeobject *obj)
-{
-    return obj == eof_object;
 }
 
 //environment
@@ -1467,23 +1300,6 @@ void populate_environment(schemeobject *env)
     add_procedure("null-environment", null_environment_proc);
     add_procedure("environment", environment_proc);
     add_procedure("eval", eval_proc);
-
-    //i/o
-    add_procedure("load", load_proc);
-    add_procedure("open-input-port", open_input_port_proc);
-    add_procedure("close-input-port", close_input_port_proc);
-    add_procedure("input-port?", is_input_port_proc);
-    add_procedure("read", read_proc);
-    add_procedure("read-char", read_char_proc);
-    add_procedure("peek-char", peek_char_proc);
-    add_procedure("eof-object?", is_eof_object_proc);
-    add_procedure("open-output-port", open_output_port_proc);
-    add_procedure("close-output-port", close_output_port_proc);
-    add_procedure("output-port?", is_output_port_proc);
-    add_procedure("write-char", write_char_proc);
-    add_procedure("write", write_proc);
-
-    add_procedure("error", error_proc);
 }
 schemeobject *make_environment(void)
 {
@@ -1570,14 +1386,6 @@ void init(void)
     and_symbol = make_symbol("and");
     or_symbol = make_symbol("or");
 
-    //i/o
-    eof_object = alloc_object(1);
-
-    //add to root list
-    push_pointer_to_existing_schemeobject_to_root_list(eof_object);
-
-    eof_object->type = EOF_OBJECT;
-
     the_empty_environment = the_empty_list;
 
     //add empty list to root list only here because now its not equal to symbol_table anymore
@@ -1628,7 +1436,7 @@ void eat_whitespace(FILE *in)
             continue;
         }
         else if (c == ';')
-        { /* comments are whitespace also */
+        { // comments are whitespace also
             while (((c = getc(in)) != EOF) && (c != '\n'))
                 ;
             continue;
@@ -1678,7 +1486,7 @@ schemeobject *read_character(FILE *in)
         {
             eat_expected_string(in, "pace");
             peek_expected_delimiter(in);
-            return make_character(' ');
+            return make_char(' ');
         }
         break;
     case 'n':
@@ -1686,12 +1494,12 @@ schemeobject *read_character(FILE *in)
         {
             eat_expected_string(in, "ewline");
             peek_expected_delimiter(in);
-            return make_character('\n');
+            return make_char('\n');
         }
         break;
     }
     peek_expected_delimiter(in);
-    return make_character(c);
+    return make_char(c);
 }
 
 schemeobject *read(FILE *in);
@@ -1884,7 +1692,7 @@ schemeobject *read(FILE *in)
             }
         }
         buffer[i] = '\0';
-        return make_string(buffer);
+        return make_str(buffer);
     }
     else if (c == '(')
     { /* read the empty list or pair */
@@ -1915,7 +1723,7 @@ char is_self_evaluating(schemeobject *exp)
     return is_boolean(exp) ||
            is_fixnum(exp) ||
            is_character(exp) ||
-           is_string(exp);
+           is_str(exp);
 }
 
 char is_variable(schemeobject *expression)
@@ -2457,7 +2265,7 @@ tailcall:
         }
         else if (is_compound_proc(procedure))
         {
-            fprintf(stderr, "is_compound_proc\n");
+            //fprintf(stderr, "is_compound_proc\n");
             env = extend_environment(
                 procedure->data.compound_proc.parameters,
                 arguments,
@@ -2515,6 +2323,10 @@ void write(FILE *out, schemeobject *obj)
     case THE_EMPTY_LIST:
         fprintf(out, "()");
         break;
+    case FIXNUM:
+        //long signed
+        fprintf(out, "%ld", obj->data.fixnum.value);
+        break;
     case BOOLEAN:
         //einzelnes zeichen
         fprintf(out, "#%c", is_false(obj) ? 'f' : 't');
@@ -2522,10 +2334,7 @@ void write(FILE *out, schemeobject *obj)
     case SYMBOL:
         fprintf(out, "%s", obj->data.symbol.value);
         break;
-    case FIXNUM:
-        //long signed
-        fprintf(out, "%ld", obj->data.fixnum.value);
-        break;
+
     case CHARACTER:
         c = obj->data.character.value;
         fprintf(out, "#\\");
@@ -2576,15 +2385,6 @@ void write(FILE *out, schemeobject *obj)
     case COMPOUND_PROC:
         fprintf(out, "#<procedure>");
         break;
-    case INPUT_PORT:
-        fprintf(out, "#<input-port>");
-        break;
-    case OUTPUT_PORT:
-        fprintf(out, "#<output-port>");
-        break;
-    case EOF_OBJECT:
-        fprintf(out, "#<eof>");
-        break;
     default:
         fprintf(stderr, "cannot write unknown type\n");
         exit(1);
@@ -2623,6 +2423,7 @@ int main(int argc, char **argv)
     init();
     load_proc_from_str("stdlib.scm");
     printf("stdlib loaded.\n");
+    print_objects_status();
     while (1)
     {
         printf("> ");
@@ -2639,64 +2440,3 @@ int main(int argc, char **argv)
     //to make compiler happy
     return 0;
 }
-
-
-/**TESTS*///
-
-/*
-> #t
-#t
-> -123
--123
-> #\c
-#\c
-> "adsf"
-"asdf"
-> (quote ())
-()
-> (quote (0 . 1))
-(0 . 1)
-> (quote (0 1 2 3))
-(0 1 2 3)
-> (quote asdf)
-asdf
-> (define a 1)
-ok
-> a
-1
-> (set! a 2)
-ok
-> a
-2
-> (if #t 1 2)
-1
-> (+ 1 2 3)
-6
-> +
-#<procedure>
-> ((lamba (x) x) 1)
-1
-> (define (add x y) (+ x y))
-ok
-> (add 1 2)
-3
-> add
-#<procedure>
-> (define c ((lambda (x) (lambda () x)) 3))
-ok
-> (c)
-3
-> (begin 1 2)
-2
-> (cond (#f          1)
-        ((eq? #t #t) 2)
-        (else        3))
-2
-> (let ((x (+ 1 1))
-        (y (- 5 2)))
-    (+ x y))
-5
-> ^C
-$
-
-*/
