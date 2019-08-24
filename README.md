@@ -47,5 +47,5 @@ ok
     (+ x y))
 5
 */
-
-![Alt text](./ObjectStructureScheme.png?raw=true "Object Structure")
+Object Structure:
+![alt text](https://github.com/Johannes0Horn/scheme_interpreter/blob/master/ObjectStructuresScheme.png)
