@@ -3,7 +3,7 @@ This Scheme Interprter is based on Peter Michaux Scheme Interpreter:
 https://github.com/petermichaux/bootstrap-scheme/tree/master
 -->floats still remain to be added, Garbage Collector is not bug free yet.
 
-Tested with gcc Compiker on Windows.
+Tested with gcc Compiler on Windows.
 
 
 
