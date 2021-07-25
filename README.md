@@ -1,5 +1,5 @@
 
-This Scheme Interprter is based on Peter Michaux Scheme Interpreter:
+This Scheme Interpreter is based on Peter Michaux Scheme Interpreter:
 https://github.com/petermichaux/bootstrap-scheme/tree/master
 -->floats still remain to be added, Garbage Collector is not bug free yet.
 
@@ -52,5 +52,7 @@ ok
 5
 */
 ```
+
 Object Structure:
+
 ![alt text](https://github.com/Johannes0Horn/scheme_interpreter/blob/master/ObjectStructuresScheme.png)
